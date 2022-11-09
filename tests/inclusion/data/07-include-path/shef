@@ -1,0 +1,8 @@
+#!/bin/bash
+
+SHEF_TXT_RUNNER=cat \
+    SHEF_INCLUDE_PATH="${INPUT_DIR}/include-env" \
+        "${BINARY}" \
+            -I "${INPUT_DIR}/include-opt-1" \
+            -I "${INPUT_DIR}/include-opt-2" \
+            "${INPUT_DIR}/main.txt"

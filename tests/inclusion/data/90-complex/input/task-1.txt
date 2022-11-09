@@ -1,0 +1,9 @@
+task-1
+task-1 second line
+#. ccc/bbb.txt
+task-1 4th line
+#. lib.txt
+task-1 6th line
+#. self.txt
+#. ccc.txt
+task-1 9th line

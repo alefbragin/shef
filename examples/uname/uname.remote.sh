@@ -1,0 +1,3 @@
+#. uname.sh
+
+uname

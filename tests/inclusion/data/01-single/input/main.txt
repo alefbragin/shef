@@ -1,0 +1,3 @@
+line before inclusion
+#. lib.txt
+line after inclusion

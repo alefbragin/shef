@@ -1,0 +1,362 @@
+#!/bin/sh
+
+##
+# Build info variables
+##
+
+PROGRAM=shef
+VERSION=0.0.0
+
+
+##
+# Usage of environment variables
+##
+
+STDIN_PATH="${SHEF_STDIN_PATH:-/dev/stdin}"
+INCLUDE_PATH="${SHEF_INCLUDE_PATH:-/usr/local/lib/shef}"
+
+SHEF_SH_RUNNER="${SHEF_SH_RUNNER:-sh}"
+SHEF_STDIN_RUNNER="${SHEF_STDIN_RUNNER:-${SHEF_SH_RUNNER}}"
+
+init_runtime_path() {
+	RUNTIME_PATH="${SHEF_RUNTIME_PATH:-/run/user/$(id -u)/shef}" || die "can't gets a user ID"
+}
+
+REMOVE_CLASHED_FIFO="${SHEF_REMOVE_CLASHED_FIFO:-0}"
+
+
+##
+# Utility variables
+##
+
+NL='
+'
+
+USAGE="Usage:
+	${PROGRAM} --version | -V
+	${PROGRAM} --help
+	${PROGRAM} [-I PATH[:PATH]] [TASK...]"
+
+ERROR_CLOSE_FD="can't close file descriptor: %s"
+
+
+##
+# Utility functions
+##
+
+printf_() {
+	printf "$@" || { echo "can't use printf" 1>&2; exit 1; }
+}
+
+die() {
+	if [ $# -gt 0 ]; then
+		format="$1" && shift
+		printf_ "${PROGRAM}: ${format}\n" "$@" 1>&2
+	fi
+
+	exit 1
+}
+
+die_usage() {
+	if [ $# -gt 0 ]; then
+		die "${1}${NL}${USAGE}" "$2"
+	else
+		die "${USAGE}"
+	fi
+}
+
+# Executes a command and redirects argument to it's STDIN.
+#
+# Arguments:
+#   $1    Redirected argument.
+#   $2... Command with it's arguments.
+#
+# Outputs:
+#   STDIN|STDOUT Command's output.
+#
+# Never dies.
+rarg() {
+	arg="$1" && shift
+	"$@" <<- EOF
+		${arg}
+	EOF
+}
+
+check_sanity() {
+	LC_ALL=C rarg "$3" grep --extended-regexp --quiet "$1" \
+		|| die "$2: '%s'" "$3"
+}
+
+
+##
+# Shef's implementation functions
+##
+
+# Preprocess STDIN, make file inclusions and remove comments.
+#
+# If the file has iclude guard and had already been included in this or a previous function call,
+# it don't be included, and the inclusion directive will be removed.
+# Note that information about inclusion that had already been included are stored in the variables
+# local to (sub)shell; and the mechanism works as appropriate when this function is called
+# in (sub)shell associated with a current run.
+#
+# Arguments:
+#   $1 Directory of preprocessed file.
+#
+# Globals:
+#   $INCLUDE_PATH Inclusion searching path in $PATH format.
+#
+# Outputs:
+#   STDOUT Preprocessed text.
+#
+# Dies if:
+#   - can't find inclusion;
+#   - utilities errors occured.
+preprocess() {
+	preprocess__first_line=1
+	while IFS= read -r preprocess__line; do case "${preprocess__line}" in
+		\#.*)
+			# Preprocess include directive
+			preprocess__first_line=0
+
+			# Remove include symbol
+			preprocess__path="${preprocess__line#\#.}"
+			# Left trim white spaces
+			preprocess__path="${preprocess__path#${preprocess__path%%[![:blank:]]*}}"
+			# Right trim white spaces
+			preprocess__path="${preprocess__path%${preprocess__path##*[![:blank:]]}}"
+
+			case "${preprocess__path}" in
+				./*|../*)
+					# Include from relative contained directory
+					preprocess__result_path="${1}/${preprocess__path}"
+
+					[ -f "${preprocess__result_path}" ] \
+						|| die "include file is not exists: %s" "${preprocess__result_path}"
+				;;
+				*)
+					# Include from $INCLUDE_PATH
+					preprocess__result_path=
+					preprocess__include_paths="${INCLUDE_PATH}"
+					while [ -n "${preprocess__include_paths}" ]; do
+						preprocess__include_path="${preprocess__include_paths%%:*}"
+
+						if [ -f "${preprocess__include_path}/${preprocess__path}" ]; then
+							preprocess__result_path="${preprocess__include_path}/${preprocess__path}"
+							break
+						fi
+
+						preprocess__include_paths="${preprocess__include_paths#${preprocess__include_path}}"
+						preprocess__include_paths="${preprocess__include_paths#:}"
+					done
+
+					[ -n "${preprocess__result_path}" ] \
+						|| die 'include file is not found in include paths: %s' "${preprocess__path}"
+				;;
+			esac
+
+			preprocess "${preprocess__result_path%/*}" < "${preprocess__result_path}"
+		;;
+		\#*)
+			# Check include guard
+			if (( preprocess__first_line )); then
+				preprocess__first_line=0
+
+				# Remove comment symbol
+				preprocess__id="${preprocess__line#\#}"
+
+				# Left trim white spaces
+				preprocess__id="${preprocess__id#${preprocess__id%%[![:blank:]]*}}"
+
+				# Get chars after guard ID
+				preprocess__line_tail="${preprocess__id#${preprocess__id%%[![:word:]]*}}"
+
+				# Remove all chars after guard ID
+				preprocess__id="${preprocess__id%${preprocess__line_tail}}"
+
+				[ -n "${preprocess__id}" ] \
+					|| die 'include guard ID is empty in the line: %s' "${preprocess__line}"
+
+				preprocess__included_var_name="preprocess__${preprocess__id}_included"
+
+				# Skip if file already had been included
+				if (( "${preprocess__included_var_name}" )); then
+					return
+				fi
+
+				# Set include indicator to true for this guard
+				eval "${preprocess__included_var_name}=1"
+			fi
+
+			# Skip comments that starts right from the line begining.
+			# We do not remove comments are padded with spaces to keep it's in heredocs.
+			continue
+		;;
+		*)
+			# Print ordinary line w/o modification
+			preprocess__first_line=0
+
+			# TODO: Try to use echo in compatibility manner instead of printf.
+			printf_ '%s\n' "${preprocess__line}"
+		;;
+	esac done
+}
+
+# Run task files by the runner command.
+#
+# Arguments:
+#   $1 Runner command.
+#   $2 List of task files, each one on a separate line.
+#
+# Globals:
+#   $RUNTIME_PATH        Path to create temporary FIFO.
+#   $REMOVE_CLASHED_FIFO If trueish, remove file that clashed with temporary FIFO file name.
+#   &3                   File descriptor. Expect to be assigned to STDIN.
+#
+# Dies if:
+#   - can't create runtime path;
+#   - can't create, open, remove FIFO;
+#   - can't reassign, close file descriptors;
+#   - task preprocessing fails;
+#   - runner command error occured.
+run() {
+	if [ ! -d "${RUNTIME_PATH}" ]; then
+		mkdir --parent "${RUNTIME_PATH}" \
+			|| die "can't create runtime path: '${RUNTIME_PATH}'"
+	fi
+
+	run__fifo="${RUNTIME_PATH}/$$.fifo"
+
+	if (( REMOVE_CLASHED_FIFO )); then
+		rm -f "${run__fifo}" || die "can't remove clashed FIFO: %s" "${run__fifo}"
+	fi
+
+	mkfifo "${run__fifo}" || die "can't create temporary FIFO: %s" "${run__fifo}"
+	exec 5<>"${run__fifo}" 6<"${run__fifo}" \
+		|| die "can't open file descriptors for FIFO: %s" "${run__fifo}"
+	rm "${run__fifo}" || die "can't remove FIFO file: %s" "${run__fifo}"
+
+	{
+		while IFS= read -r run__file; do
+			exec 4<&0 0<&3 || die "can't reassign file descriptors: 0, 3"
+
+			if [ "${run__file}" = "${STDIN_PATH}" ]; then
+				run__dir="$PWD"
+			else
+				run__dir="${run__file%/*}"
+			fi
+
+			preprocess "${run__dir}" < "${run__file}"
+
+			exec 0<&4 4<&- || die "can't reassign file descriptor and close it: 0, 4"
+		done <<- EOF >&5 || die "can't output tasks content to the pipe"
+			$2
+		EOF
+	} &
+
+	exec 5>&- || die "${ERROR_CLOSE_FD}" 5
+
+	$1 <&6 || die "can't run task file with runner"
+	exec 6<&- || die "${ERROR_CLOSE_FD}" 6
+
+	wait $! || die 'subprocess for task preprocessing fails'
+}
+
+set_task_runner() {
+	if [ "$1" = "${STDIN_PATH}" ]; then
+		[ -n "${SHEF_STDIN_RUNNER}" ] \
+			|| die 'no runner specified for the task from STDIN'
+		TASK_RUNNER="${SHEF_STDIN_RUNNER}"
+	else
+		set_task_runner__suffix="${1##*/}"
+		set_task_runner__suffix="${set_task_runner__suffix#*.}"
+
+		check_sanity '^[0-9a-z.]+$' 'bad runner suffix' "${set_task_runner__suffix}"
+
+		set_task_runner__name="$(
+			rarg "${set_task_runner__suffix}" tr '.[:lower:]' '_[:upper:]'
+		)" || die "can't process task suffix"
+
+		set_task_runner__env_name="SHEF_${set_task_runner__name}_RUNNER"
+
+		eval "TASK_RUNNER=\${${set_task_runner__env_name}}" \
+			|| die "can't assign TASK_RUNNER variable from: '${set_task_runner__env_name}'"
+
+		[ -n "${TASK_RUNNER}" ] \
+			|| die "no runner specified for the task: %s in %s" "$1" "${set_task_runner__env_name}"
+	fi
+}
+
+
+##
+# Commands
+##
+
+cmd_version() {
+	[ $# -eq 0 ] || die_usage "extra argument: '%s'" "$1"
+	echo "shef version ${VERSION}"
+}
+
+cmd_help() {
+	echo "${USAGE}"
+}
+
+cmd() {
+	while getopts ':I:' cmd__option; do case "${cmd__option}" in
+		I)
+			check_sanity '^[^:]+(:[^:]+)*$' 'incorrect include paths format' "${OPTARG}"
+			INCLUDE_PATH="${OPTARG}:${INCLUDE_PATH}"
+		;;
+		\?) die_usage 'invalid option: -%s' "${OPTARG}" ;;
+		:) die_usage 'option -%s requires an argument' "${OPTARG}" ;;
+	esac done
+	shift $(( OPTIND-1 ))
+
+	init_runtime_path
+
+	exec 3<&0 || die "can't open file descriptor 3 for: 0"
+
+	if [ $# -eq 0 ]; then
+		set -- -
+	fi
+
+	cmd__task="$1" && shift
+
+	if [ "${cmd__task}" = - ]; then
+		cmd__task="${STDIN_PATH}"
+	fi
+
+	set_task_runner "${cmd__task}"
+	cmd__tasks_bunch="${cmd__task}"
+
+	for cmd__task in "$@"; do
+		if [ "${cmd__task}" = - ]; then
+			cmd__task="${STDIN_PATH}"
+		fi
+
+		cmd__prev_task_runner="${TASK_RUNNER}"
+		set_task_runner "${cmd__task}"
+
+		if [ "${cmd__prev_task_runner}" = "${TASK_RUNNER}" ]; then
+			cmd__tasks_bunch="${cmd__tasks_bunch}${NL}${cmd__task}"
+		else
+			run "${cmd__prev_task_runner}" "${cmd__tasks_bunch}"
+			cmd__tasks_bunch="${cmd__task}"
+		fi
+	done
+
+	run "${TASK_RUNNER}" "${cmd__tasks_bunch}"
+
+	exec 3<&- || die "${ERROR_CLOSE_FD}" 3
+}
+
+
+##
+# Entry point
+##
+
+case "$1" in
+	--version|-V) shift; cmd_version "$@" ;;
+	--help) cmd_help ;;
+	*) cmd "$@" ;;
+esac

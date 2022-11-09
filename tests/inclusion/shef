@@ -1,0 +1,3 @@
+#!/bin/bash
+
+SHEF_INCLUDE_PATH="${INPUT_DIR}/include" SHEF_TXT_RUNNER=cat "${BINARY}" "${INPUT_DIR}/main.txt"

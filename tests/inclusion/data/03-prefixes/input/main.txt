@@ -1,0 +1,4 @@
+#. lib.txt
+#. prefix-1/lib.txt
+#. prefix-2/lib.txt
+main

@@ -1,0 +1,4 @@
+# 3e3c955b_9832_4776_b3b9_759440617c1a
+/opt-2/cat
+#. ccc/ccc/1.txt
+/opt-2/cat 3rd line

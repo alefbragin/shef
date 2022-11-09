@@ -1,0 +1,29 @@
+#!/bin/bash
+
+TEST_DIR="${0%/*}"
+RUN_PREFIX="${TEST_DIR}/run"
+DATA_PREFIX="${TEST_DIR}/data"
+
+fail() {
+    echo "inclusion test (${DATA_BASENAME}) fails${1+: $1}"
+    exit 1
+}
+
+for DATA_DIR in "${DATA_PREFIX}/"*; do
+    DATA_BASENAME="${DATA_DIR#${DATA_PREFIX}/}"
+    RUN_DIR="${RUN_PREFIX}/${DATA_BASENAME}"
+    mkdir --parents "${RUN_DIR}" || fail 'can not create directory: %s' "${RUN_DIR}"
+
+    if [ -e "${DATA_DIR}/shef" ]; then
+        SHEF="${DATA_DIR}/shef"
+    else
+        SHEF="${TEST_DIR}/shef"
+    fi
+
+    BINARY="${TEST_DIR}/../../shef" INPUT_DIR="${DATA_DIR}/input" "${SHEF}" \
+        > "${RUN_DIR}/actual.txt" || fail 'shef fails'
+
+    diff "${DATA_DIR}/expected.txt" "${RUN_DIR}/actual.txt" || fail 'actual and expected are differ'
+
+    echo "inclusion test (${DATA_BASENAME}) is passed"
+done

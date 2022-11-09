@@ -1,0 +1,3 @@
+#. outer.txt
+#. inner.txt
+line from main

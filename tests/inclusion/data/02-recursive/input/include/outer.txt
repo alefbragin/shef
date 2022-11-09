@@ -1,0 +1,3 @@
+# 20bf096d_05d3_44aa_b8c2_7bf5fe51f33c
+#. inner.txt
+line from outer library
