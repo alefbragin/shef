@@ -1,1 +1,40 @@
 #!/bin/sh
+
+PROGRAM=shef
+VERSION=0.0.0
+LIBRARY_PATH="${SHEF_LIBRARY_PATH:-/usr/lib/shef}"
+
+NL='
+'
+
+die() {
+  [ $# -gt 0 ] && echo "${PROGRAM}: $1"
+  exit 1
+}
+
+options="$(getopt \
+  --options c:e:V \
+  --longoptions config:,eval-config:,version \
+  -- "$@")" || die 'cannot parse options'
+
+eval set -- "${options}"
+
+if [ $# -eq 2 ] && [ "$1" = "--version" -o "$1" = "-V" ]; then
+  printf 'shef version %s\n' "${VERSION}"
+  exit 0
+fi
+
+config_content=
+
+while :; do case "$1" in
+  -c|--config)
+    config_content="${config_content}${NL}$(cat "$2")" || die 'cannot read config'
+    shift 2
+    ;;
+  -e|--eval-config)
+    config_content="${config_content}${NL}$2"
+    shift 2
+    ;;
+  -V|--version) die "option '--version' (or '-V') should be alone";;
+  --) shift; break;;
+esac done
