@@ -69,7 +69,7 @@ task_find() {
     if [ "${task}" = - ]; then
       println -
     else
-      find_result="$(find "${task}" -type f -name '*.sh')" \
+      find_result="$(find "${task}" -type f \( -name '*.sh' -o -name '*.inc' \) )" \
         || die "cannot find for the task path: '${task}'"
       [ -n "${find_result}" ] || die "there are no task files in the path: '${task_path}'"
       print "${find_result}" | sort
@@ -84,7 +84,7 @@ run_task() {
   esac
 
   printf "run with '%s':\n" "${task_runner}"
-  printf "%s\n" "$1"
+  print "$1" | sed 's/^/\t/'
 }
 
 parse_env() {
