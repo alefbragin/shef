@@ -2,39 +2,150 @@
 
 PROGRAM=shef
 VERSION=0.0.0
-LIBRARY_PATH="${SHEF_LIBRARY_PATH:-/usr/lib/shef}"
+INCLUDE_PATH="${SHEF_INCLUDE_PATH:-/usr/lib/shef}"
+
+TASK_RUNNER_LOCAL='sh'
+TASK_RUNNER_TARGET='ssh -T "${target_user}@${target_host}" -- sh'
 
 NL='
 '
 
+print() {
+  printf '%s' "$1"
+}
+
+println() {
+  printf '%s\n' "$1"
+}
+
+usage_print() {
+  indent="$(print "${PROGRAM}" | tr '[:print:]' ' ')"
+  print "Usage:
+    ${PROGRAM} --version | -V
+    ${PROGRAM} [--prelude=<script> | -p <script>]
+    ${indent} [--prelude-local=<script> | -l <script>]
+    ${indent} [--prelude-target=<script> | -t <script>]
+    ${indent} [--builtin-prelude] [--no-builtin-prelude | -P]
+    ${indent} [--include-path=<path> | -i <path>]
+    ${indent} [--builtin-include-path] [--no-builtin-include-path | -I]
+    ${indent} [--variable=<name>=<value> | -v <name>=<value>]
+    ${indent} [--default-environment=<environment> | -e <environment>]
+    ${indent} [--] [<task>...]
+"
+}
+
 die() {
-  [ $# -gt 0 ] && echo "${PROGRAM}: $1"
+  if [ "$1" = --usage ]; then
+    die_option="$1" && shift
+  fi
+
+  if [ $# -gt 0 ]; then
+    die_format="$1" && shift
+    printf "${PROGRAM}: ${die_format}\n" "$@" 1>&2
+
+    if [ "${die_option}" = --usage ]; then
+      println 1>&2
+    fi
+  fi
+
+  if [ "${die_option}" = --usage ]; then
+    usage_print 1>&2
+  fi
+
   exit 1
 }
 
-options="$(getopt \
-  --options c:e:V \
-  --longoptions config:,eval-config:,version \
-  -- "$@")" || die 'cannot parse options'
-
-eval set -- "${options}"
-
-if [ $# -eq 2 ] && [ "$1" = "--version" -o "$1" = "-V" ]; then
+cmd_version_print() {
+  [ $# -eq 0 ] || die --usage "extra argument: '%s'" "$@"
   printf 'shef version %s\n' "${VERSION}"
-  exit 0
-fi
+}
 
-config_content=
+task_has_option() {
+  print "$1" | grep --quiet "\.$2\."
+}
 
-while :; do case "$1" in
-  -c|--config)
-    config_content="${config_content}${NL}$(cat "$2")" || die 'cannot read config'
-    shift 2
+task_find() {
+  for task_path; do
+    if [ "${task_path}" = - ]; then
+      println -
+    else
+      find_result="$(find "${task_path}" -type f -name '*.sh')" \
+        || die "cannot find in the path: '${task_path}'"
+      [ -n "${find_result}" ] || die "there are no task files in the path: '${task_path}'"
+      print "${find_result}" | sort
+    fi
+  done
+}
+
+task_run() {
+  case "$2" in
+    local) task_runner="${TASK_RUNNER_LOCAL}" ;;
+    target) task_runner="${TASK_RUNNER_TARGET}" ;;
+  esac
+
+  printf "run with '%s':\n" "${task_runner}"
+  printf "%s\n" "$1"
+}
+
+# TODO: 010-deploy.local.include
+cmd_shef() {
+  options="$(getopt \
+    --options i:c: \
+    --longoptions include:,include-command: \
+    -- "$@")" || die --usage 'cannot parse options'
+
+  eval set -- "${options}"
+
+  inclusion=
+
+  while :; do case "$1" in
+    -i|--include)
+      inclusion="${inclusion}$(cat "$2")${NL}" || die 'cannot read inclusion'
+      shift 2
     ;;
-  -e|--eval-config)
-    config_content="${config_content}${NL}$2"
-    shift 2
+    -c|--include-command)
+      inclusion="${inclusion}$2${NL}"
+      shift 2
     ;;
-  -V|--version) die "option '--version' (or '-V') should be alone";;
-  --) shift; break;;
-esac done
+    --)
+      shift
+      break
+    ;;
+  esac done
+
+  task_files="$(task_find "${@:--}")" || die
+
+  task_files_env=
+  task_env_prev=
+
+  while IFS= read -r task_file; do
+    if task_has_option "${task_file}" local; then
+      ! task_has_option "${task_file}" target \
+        || die "task cannot be 'local' and 'target' at same time: '${task_file}'"
+      task_env=local
+    elif task_has_option "${task_file}" target; then
+      task_env=target
+    else
+      die "no environment specified for the task '${task_file}'"
+    fi
+
+    if [ "${task_env}" = "${task_env_prev}" -o "${task_env_prev}" = '' ]; then
+      task_files_env="${task_files_env}${task_file}${NL}"
+    else
+      task_run "${task_files_env}" "${task_env_prev}"
+      task_files_env="${task_file}${NL}"
+    fi
+
+    task_env_prev="${task_env}"
+  done << EOF
+${task_files}
+EOF
+
+  task_run "${task_files_env}" "${task_env}"
+}
+
+case "$1" in
+  --version|-V) shift; cmd_version_print "$@" ;;
+  --help) usage_print ;;
+  *) cmd_shef "$@" ;;
+esac
