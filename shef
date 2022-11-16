@@ -25,30 +25,30 @@ usage_print() {
     ${PROGRAM} [--prelude=<script> | -p <script>]
     ${indent} [--prelude-local=<script> | -l <script>]
     ${indent} [--prelude-target=<script> | -t <script>]
-    ${indent} [--builtin-prelude] [--no-builtin-prelude | -P]
-    ${indent} [--include-path=<path> | -i <path>]
-    ${indent} [--builtin-include-path] [--no-builtin-include-path | -I]
+    ${indent} [--builtin-prelude] [--no-builtin-prelude]
+    ${indent} [--include-path=<path> | -I <path>]
+    ${indent} [--builtin-include-path] [--no-builtin-include-path]
     ${indent} [--variable=<name>=<value> | -v <name>=<value>]
-    ${indent} [--default-environment=<environment> | -e <environment>]
+    ${indent} [--default-environment=l[ocal]|t[arget] | -e l[ocal]|t[arget]]
     ${indent} [--] [<task>...]
 "
 }
 
 die() {
   if [ "$1" = --usage ]; then
-    die_option="$1" && shift
+    option="$1" && shift
   fi
 
   if [ $# -gt 0 ]; then
-    die_format="$1" && shift
-    printf "${PROGRAM}: ${die_format}\n" "$@" 1>&2
+    format="$1" && shift
+    printf "${PROGRAM}: ${format}\n" "$@" 1>&2
 
-    if [ "${die_option}" = --usage ]; then
+    if [ "${option}" = --usage ]; then
       println 1>&2
     fi
   fi
 
-  if [ "${die_option}" = --usage ]; then
+  if [ "${option}" = --usage ]; then
     usage_print 1>&2
   fi
 
@@ -60,24 +60,24 @@ cmd_version_print() {
   printf 'shef version %s\n' "${VERSION}"
 }
 
-task_has_option() {
+file_has_option() {
   print "$1" | grep --quiet "\.$2\."
 }
 
 task_find() {
-  for task_path; do
-    if [ "${task_path}" = - ]; then
+  for task; do
+    if [ "${task}" = - ]; then
       println -
     else
-      find_result="$(find "${task_path}" -type f -name '*.sh')" \
-        || die "cannot find in the path: '${task_path}'"
+      find_result="$(find "${task}" -type f -name '*.sh')" \
+        || die "cannot find for the task path: '${task}'"
       [ -n "${find_result}" ] || die "there are no task files in the path: '${task_path}'"
       print "${find_result}" | sort
     fi
   done
 }
 
-task_run() {
+run_task() {
   case "$2" in
     local) task_runner="${TASK_RUNNER_LOCAL}" ;;
     target) task_runner="${TASK_RUNNER_TARGET}" ;;
@@ -87,24 +87,65 @@ task_run() {
   printf "%s\n" "$1"
 }
 
+parse_env() {
+  case "$1" in
+    local|l) print local ;;
+    target|t) print target ;;
+    *) die --usage "cannot parse environment '$1'"
+  esac
+}
+
 # TODO: 010-deploy.local.include
 cmd_shef() {
   options="$(getopt \
-    --options i:c: \
-    --longoptions include:,include-command: \
+    --options p:l:t:I:v:e: \
+    --longoptions prelude:,prelude-local:,prelude-target: \
+    --longoptions builtin-prelude,no-builtin-prelude \
+    --longoptions include-path: \
+    --longoptions builtin-include-path,no-builtin-include-path \
     -- "$@")" || die --usage 'cannot parse options'
 
   eval set -- "${options}"
 
-  inclusion=
-
   while :; do case "$1" in
-    -i|--include)
-      inclusion="${inclusion}$(cat "$2")${NL}" || die 'cannot read inclusion'
+    -p|--prelude)
+      die "not implemented yet"
       shift 2
     ;;
-    -c|--include-command)
-      inclusion="${inclusion}$2${NL}"
+    --prelude-local|-l)
+      die "not implemented yet"
+      shift 2
+    ;;
+    --prelude-target|-t)
+      die "not implemented yet"
+      shift 2
+    ;;
+    --builtin-prelude)
+      die "not implemented yet"
+      shift
+    ;;
+    --no-builtin-prelude)
+      die "not implemented yet"
+      shift
+    ;;
+    --include-path|-I)
+      die "not implemented yet"
+      shift 2
+    ;;
+    --builtin-include-path)
+      die "not implemented yet"
+      shift
+    ;;
+    --no-builtin-include-path)
+      die "not implemented yet"
+      shift
+    ;;
+    --variable|-v)
+      die "not implemented yet"
+      shift 2
+    ;;
+    --default-environment|-e)
+      default_env="$(parse_env "$2")" || die
       shift 2
     ;;
     --)
@@ -115,33 +156,35 @@ cmd_shef() {
 
   task_files="$(task_find "${@:--}")" || die
 
-  task_files_env=
-  task_env_prev=
+  env_files=
+  prev_env=
 
-  while IFS= read -r task_file; do
-    if task_has_option "${task_file}" local; then
-      ! task_has_option "${task_file}" target \
-        || die "task cannot be 'local' and 'target' at same time: '${task_file}'"
-      task_env=local
-    elif task_has_option "${task_file}" target; then
-      task_env=target
+  while IFS= read -r file; do
+    if file_has_option "${file}" local; then
+      ! file_has_option "${file}" target \
+        || die "task cannot be 'local' and 'target' at same time: '${file}'"
+      env=local
+    elif file_has_option "${file}" target; then
+      env=target
     else
-      die "no environment specified for the task '${task_file}'"
+      [ -n "${default_env}" ] \
+        || die "no environment specified for the task '${file}' and there are no default one"
+      env="${default_env}"
     fi
 
-    if [ "${task_env}" = "${task_env_prev}" -o "${task_env_prev}" = '' ]; then
-      task_files_env="${task_files_env}${task_file}${NL}"
+    if [ "${env}" = "${prev_env}" -o "${prev_env}" = '' ]; then
+      env_files="${env_files}${file}${NL}"
     else
-      task_run "${task_files_env}" "${task_env_prev}"
-      task_files_env="${task_file}${NL}"
+      run_task "${env_files}" "${prev_env}"
+      env_files="${file}${NL}"
     fi
 
-    task_env_prev="${task_env}"
+    prev_env="${env}"
   done << EOF
 ${task_files}
 EOF
 
-  task_run "${task_files_env}" "${task_env}"
+  run_task "${env_files}" "${env}"
 }
 
 case "$1" in
