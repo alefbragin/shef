@@ -2,7 +2,7 @@
 
 PROGRAM=shef
 VERSION=0.0.0
-INCLUDE_PATH="${SHEF_INCLUDE_PATH:-/usr/lib/shef}"
+INCLUDE_PATH="${SHEF_INCLUDE_PATH:-/usr/local/lib/shef}"
 
 NL='
 '
