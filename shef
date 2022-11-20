@@ -4,11 +4,11 @@ PROGRAM=shef
 VERSION=0.0.0
 INCLUDE_PATH="${SHEF_INCLUDE_PATH:-/usr/lib/shef}"
 
-TASK_RUNNER_LOCAL='sh'
-TASK_RUNNER_TARGET='ssh -T "${target_user}@${target_host}" -- sh'
-
 NL='
 '
+
+ERROR_TASK_RUN='cannot run task file'
+ERROR_VARIABLE_EMPTY="required variable '%s' is empty"
 
 # Ensure that `printf` program exists
 printf '' || exit 1
@@ -102,27 +102,32 @@ search_library() {
 
 mktemp_task() {
   shef_task_file="$(mktemp --tmpdir shef.XXXXXXXXXX.sh)" \
-    || die "cannot create temp file for task script"
+    || die 'cannot create temp file for task script'
   trap "shred ${shef_task_file}; rm -f ${shef_task_file}" EXIT
 }
 
 write_task() {
-  cat "$1" >> "${shef_task_file}" || die "cannot write to temp task file"
+  cat "$1" >> "${shef_task_file}" || die 'cannot write to temp task file'
 }
 
 truncate_task() {
-  shred "${shef_task_file}" || die "cannot shred temp task file"
-  > "${shef_task_file}" || die "cannot truncate temp task file"
+  shred "${shef_task_file}" || die 'cannot shred temp task file'
+  > "${shef_task_file}" || die 'cannot truncate temp task file'
 }
 
 run_env() {
   case "$1" in
-    local) task_runner="${TASK_RUNNER_LOCAL}" ;;
-    target) task_runner="${TASK_RUNNER_TARGET}" ;;
-  esac
+    local)
+      sh < "${shef_task_file}" || die "${ERROR_TASK_RUN}"
+    ;;
+    target)
+      [ -n "${SHEF_TARGET_HOST}" ] || die "${ERROR_VARIABLE_EMPTY}" SHEF_TARGET_HOST
+      [ -n "${SHEF_TARGET_USER}" ] || die "${ERROR_VARIABLE_EMPTY}" SHEF_TARGET_USER
 
-  printf "run with '%s':\n" "${task_runner}"
-  print "$2" | sed 's/^/\t/' || die
+      ssh -T "${SHEF_TARGET_USER}@${SHEF_TARGET_HOST}" -- sh < "${shef_task_file}" \
+        || die "${ERROR_TASK_RUN}"
+    ;;
+  esac
 }
 
 parse_env() {
