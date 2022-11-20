@@ -10,6 +10,9 @@ TASK_RUNNER_TARGET='ssh -T "${target_user}@${target_host}" -- sh'
 NL='
 '
 
+# Ensure that `printf` program exists
+printf '' || exit 1
+
 print() {
   printf '%s' "$1"
 }
@@ -19,16 +22,10 @@ println() {
 }
 
 usage_print() {
-  indent="$(print "${PROGRAM}" | tr '[:print:]' ' ')"
+  indent="$(print "${PROGRAM}" | tr '[:print:]' ' ')" || exit 1
   print "Usage:
     ${PROGRAM} --version | -V
-    ${PROGRAM} [--prelude=<script> | -p <script>]
-    ${indent} [--prelude-local=<script> | -l <script>]
-    ${indent} [--prelude-target=<script> | -t <script>]
-    ${indent} [--builtin-prelude] [--no-builtin-prelude]
-    ${indent} [--include-path=<path> | -I <path>]
-    ${indent} [--builtin-include-path] [--no-builtin-include-path]
-    ${indent} [--variable=<name>=<value> | -v <name>=<value>]
+    ${PROGRAM} [--include-path=<path> | -I <path>]
     ${indent} [--default-environment=l[ocal]|t[arget] | -e l[ocal]|t[arget]]
     ${indent} [--] [<task>...]
 "
@@ -55,13 +52,15 @@ die() {
   exit 1
 }
 
-cmd_version_print() {
-  [ $# -eq 0 ] || die --usage "extra argument: '%s'" "$@"
-  printf 'shef version %s\n' "${VERSION}"
+fnmatch() {
+  case "$2" in
+    $1) return 0 ;;
+    *) return 1 ;;
+  esac
 }
 
 file_has_option() {
-  print "$1" | grep --quiet "\.$2\."
+  fnmatch "*.$2.*" "$1"
 }
 
 task_find() {
@@ -72,19 +71,58 @@ task_find() {
       find_result="$(find "${task}" -type f \( -name '*.sh' -o -name '*.inc' \) )" \
         || die "cannot find for the task path: '${task}'"
       [ -n "${find_result}" ] || die "there are no task files in the path: '${task_path}'"
-      print "${find_result}" | sort
+      print "${find_result}" | LC_ALL=C sort || die
     fi
   done
 }
 
-run_task() {
-  case "$2" in
+search_library() {
+  print "$1" | LC_ALL=C grep '^[0-9a-z-]\+$' || die "bad library name: '$1'"
+
+  hash_key="$(print "shef_include_hash/$1" | tr '/' 'S')" \
+    || die 'cannot make hash key for the library'
+  eval "hash_value=\"\${${hash_key}}\""
+
+  if [ -n "${hash_value}" ]; then
+    println "${hash_value}"
+    return 0
+  fi
+
+  print "${shef_include_path}" | while IFS=: read -r path; do
+    lib_path="${path}/$1.sh"
+    if [ -f "${lib_path}" ]; then
+      eval "${hash_key}=\"\${lib_path}\""
+      println "${lib_path}"
+      return 0
+    fi
+  done || die
+
+  die "cannot find library: '$1'"
+}
+
+mktemp_task() {
+  shef_task_file="$(mktemp --tmpdir shef.XXXXXXXXXX.sh)" \
+    || die "cannot create temp file for task script"
+  trap "shred ${shef_task_file}; rm -f ${shef_task_file}" EXIT
+}
+
+write_task() {
+  cat "$1" >> "${shef_task_file}" || die "cannot write to temp task file"
+}
+
+truncate_task() {
+  shred "${shef_task_file}" || die "cannot shred temp task file"
+  > "${shef_task_file}" || die "cannot truncate temp task file"
+}
+
+run_env() {
+  case "$1" in
     local) task_runner="${TASK_RUNNER_LOCAL}" ;;
     target) task_runner="${TASK_RUNNER_TARGET}" ;;
   esac
 
   printf "run with '%s':\n" "${task_runner}"
-  print "$1" | sed 's/^/\t/'
+  print "$2" | sed 's/^/\t/' || die
 }
 
 parse_env() {
@@ -95,53 +133,24 @@ parse_env() {
   esac
 }
 
-# TODO: 010-deploy.local.include
+cmd_version_print() {
+  [ $# -eq 0 ] || die --usage "extra argument: '%s'" "$@"
+  printf 'shef version %s\n' "${VERSION}"
+}
+
 cmd_shef() {
   options="$(getopt \
-    --options p:l:t:I:v:e: \
-    --longoptions prelude:,prelude-local:,prelude-target: \
-    --longoptions builtin-prelude,no-builtin-prelude \
-    --longoptions include-path: \
-    --longoptions builtin-include-path,no-builtin-include-path \
-    -- "$@")" || die --usage 'cannot parse options'
+    --options I:e: \
+    --longoptions include-path:,default-environment: \
+    -- "$@")" || die --usage
 
   eval set -- "${options}"
 
+  shef_include_path="${INCLUDE_PATH}"
+
   while :; do case "$1" in
-    -p|--prelude)
-      die "not implemented yet"
-      shift 2
-    ;;
-    --prelude-local|-l)
-      die "not implemented yet"
-      shift 2
-    ;;
-    --prelude-target|-t)
-      die "not implemented yet"
-      shift 2
-    ;;
-    --builtin-prelude)
-      die "not implemented yet"
-      shift
-    ;;
-    --no-builtin-prelude)
-      die "not implemented yet"
-      shift
-    ;;
     --include-path|-I)
-      die "not implemented yet"
-      shift 2
-    ;;
-    --builtin-include-path)
-      die "not implemented yet"
-      shift
-    ;;
-    --no-builtin-include-path)
-      die "not implemented yet"
-      shift
-    ;;
-    --variable|-v)
-      die "not implemented yet"
+      shef_include_path="$2:${shef_include_path}"
       shift 2
     ;;
     --default-environment|-e)
@@ -154,12 +163,12 @@ cmd_shef() {
     ;;
   esac done
 
-  task_files="$(task_find "${@:--}")" || die
+  files="$(task_find "${@:--}")" || die
 
-  env_files=
+  mktemp_task
+
   prev_env=
-
-  while IFS= read -r file; do
+  print "${files}" | while IFS= read -r file; do
     if file_has_option "${file}" local; then
       ! file_has_option "${file}" target \
         || die "task cannot be 'local' and 'target' at same time: '${file}'"
@@ -172,19 +181,25 @@ cmd_shef() {
       env="${default_env}"
     fi
 
-    if [ "${env}" = "${prev_env}" -o "${prev_env}" = '' ]; then
-      env_files="${env_files}${file}${NL}"
+    if [ "${env}" != "${prev_env}" -a -n "${prev_env}" ]; then
+      run_env "${prev_env}"
+      truncate_task
+    fi
+
+    if fnmatch '*.inc' "${file}"; then
+      while IFS= read -r lib; do
+        lib_path="$(search_library "${lib}")" || die
+        write_task "${lib_path}"
+      done < "${file}"
     else
-      run_task "${env_files}" "${prev_env}"
-      env_files="${file}${NL}"
+      write_task "${file}"
     fi
 
     prev_env="${env}"
-  done << EOF
-${task_files}
-EOF
+  done || die
 
-  run_task "${env_files}" "${env}"
+  run_env "${env}"
+  truncate_task
 }
 
 case "$1" in
