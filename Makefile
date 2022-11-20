@@ -1,6 +1,14 @@
-.PHONY: all install
+PREFIX ?= /usr/local
+
+.PHONY: all install uninstall
 
 all:
 
 install:
-	install -Dm755 shef /usr/local/bin/
+	install -D --mode=755 shef $(PREFIX)/bin/
+	cd lib && find . -type f \
+		| xargs -I _ install -D --mode=644 _ $(PREFIX)/lib/shef/_
+
+uninstall:
+	rm $(PREFIX)/bin/shef
+	rm --recursive $(PREFIX)/lib/shef
