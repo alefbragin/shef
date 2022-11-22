@@ -77,7 +77,8 @@ task_find() {
 }
 
 search_library() {
-  print "$1" | LC_ALL=C grep '^[0-9a-z-]\+$' || die "bad library name: '$1'"
+  print "$1" | LC_ALL=C grep --quiet '^[0-9a-z-]\+$' \
+    || die "bad library name: '$1'"
 
   hash_key="$(print "shef_include_hash/$1" | tr '/' 'S')" \
     || die 'cannot make hash key for the library'
@@ -88,14 +89,15 @@ search_library() {
     return 0
   fi
 
-  print "${shef_include_path}" | while IFS=: read -r path; do
+  IFS=:
+  for path in "${shef_include_path}"; do
     lib_path="${path}/$1.sh"
     if [ -f "${lib_path}" ]; then
       eval "${hash_key}=\"\${lib_path}\""
       println "${lib_path}"
       return 0
     fi
-  done || die
+  done
 
   die "cannot find library: '$1'"
 }
@@ -108,11 +110,6 @@ mktemp_task() {
 
 write_task() {
   cat "$1" >> "${shef_task_file}" || die 'cannot write to temp task file'
-}
-
-truncate_task() {
-  shred "${shef_task_file}" || die 'cannot shred temp task file'
-  > "${shef_task_file}" || die 'cannot truncate temp task file'
 }
 
 run_env() {
@@ -128,13 +125,16 @@ run_env() {
         || die "${ERROR_TASK_RUN}"
     ;;
   esac
+
+  shred "${shef_task_file}" || die 'cannot shred temp task file'
+  > "${shef_task_file}" || die 'cannot truncate temp task file'
 }
 
 parse_env() {
   case "$1" in
     local|l) print local ;;
     target|t) print target ;;
-    *) die --usage "cannot parse environment '$1'"
+    *) die --usage "cannot parse environment '$1'" ;;
   esac
 }
 
@@ -173,7 +173,7 @@ cmd_shef() {
   mktemp_task
 
   prev_env=
-  print "${files}" | while IFS= read -r file; do
+  while IFS= read -r file; do
     if file_has_option "${file}" local; then
       ! file_has_option "${file}" target \
         || die "task cannot be 'local' and 'target' at same time: '${file}'"
@@ -188,7 +188,6 @@ cmd_shef() {
 
     if [ "${env}" != "${prev_env}" -a -n "${prev_env}" ]; then
       run_env "${prev_env}"
-      truncate_task
     fi
 
     if fnmatch '*.inc' "${file}"; then
@@ -201,10 +200,11 @@ cmd_shef() {
     fi
 
     prev_env="${env}"
-  done || die
+  done << EOF
+${files}
+EOF
 
   run_env "${env}"
-  truncate_task
 }
 
 case "$1" in
