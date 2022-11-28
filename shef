@@ -3,6 +3,7 @@
 PROGRAM=shef
 VERSION=0.0.0
 INCLUDE_PATH="${SHEF_INCLUDE_PATH:-/usr/local/lib/shef}"
+STDIN_PATH="${SHEF_STDIN_PATH:-/dev/stdin}"
 
 NL='
 '
@@ -26,7 +27,7 @@ usage_print() {
   print "Usage:
     ${PROGRAM} --version | -V
     ${PROGRAM} [--include-path=<path> | -I <path>]
-    ${indent} [--default-environment=l[ocal]|t[arget] | -e l[ocal]|t[arget]]
+    ${indent} [--environment=l[ocal]|t[arget] | -e l[ocal]|t[arget]]
     ${indent} [--] [<task>...]
 "
 }
@@ -66,9 +67,9 @@ file_has_option() {
 task_find() {
   for task; do
     if [ "${task}" = - ]; then
-      println -
+      println "${STDIN_PATH}"
     else
-      find_result="$(find "${task}" -type f \( -name '*.sh' -o -name '*.inc' \) )" \
+      find_result="$(find "${task}" -type f -name '*.sh')" \
         || die "cannot find for the task path: '${task}'"
       [ -n "${find_result}" ] || die "there are no task files in the path: '${task_path}'"
       print "${find_result}" | LC_ALL=C sort || die
@@ -108,21 +109,46 @@ mktemp_task() {
   trap "shred ${shef_task_file}; rm -f ${shef_task_file}" EXIT
 }
 
+# write_task() {
+#   cat "$1" >> "${shef_task_file}" || die 'cannot write to temp task file'
+# }
+
+write_task_line() {
+  println "$1" >> "${shef_task_file}" || die 'cannot write to temp task file'
+}
+
+write_inclusion() {
+  
+}
+
 write_task() {
-  cat "$1" >> "${shef_task_file}" || die 'cannot write to temp task file'
+  all_inclusions_are_parses=no
+  while IFS= read -r line; do
+    write_task_line "${line}"
+    if [ "${all_inclusions_are_parses}" = no ]; then
+      case "${line#${line%%[![:blank:]]*}}" in
+        \#.*) write_inclusion "$1" ;;
+        \#*|'') ;;
+        *) all_inclusions_are_parses=yes ;;
+      esac
+    fi
+  done < "$1"
 }
 
 run_env() {
   case "$1" in
     local)
-      sh < "${shef_task_file}" || die "${ERROR_TASK_RUN}"
+      cat < "${shef_task_file}" || die "${ERROR_TASK_RUN}"
+      # sh < "${shef_task_file}" || die "${ERROR_TASK_RUN}"
     ;;
     target)
       [ -n "${SHEF_TARGET_HOST}" ] || die "${ERROR_VARIABLE_EMPTY}" SHEF_TARGET_HOST
       [ -n "${SHEF_TARGET_USER}" ] || die "${ERROR_VARIABLE_EMPTY}" SHEF_TARGET_USER
 
-      ssh -T "${SHEF_TARGET_USER}@${SHEF_TARGET_HOST}" -- sh < "${shef_task_file}" \
-        || die "${ERROR_TASK_RUN}"
+      cat < "${shef_task_file}" || die "${ERROR_TASK_RUN}"
+
+      # ssh -T "${SHEF_TARGET_USER}@${SHEF_TARGET_HOST}" -- sh < "${shef_task_file}" \
+      #   || die "${ERROR_TASK_RUN}"
     ;;
   esac
 
@@ -146,7 +172,7 @@ cmd_version_print() {
 cmd_shef() {
   options="$(getopt \
     --options I:e: \
-    --longoptions include-path:,default-environment: \
+    --longoptions include-path:,environment: \
     -- "$@")" || die --usage
 
   eval set -- "${options}"
@@ -158,8 +184,8 @@ cmd_shef() {
       shef_include_path="$2:${shef_include_path}"
       shift 2
     ;;
-    --default-environment|-e)
-      default_env="$(parse_env "$2")" || die
+    --environment|-e)
+      given_env="$(parse_env "$2")" || die
       shift 2
     ;;
     --)
@@ -174,16 +200,16 @@ cmd_shef() {
 
   prev_env=
   while IFS= read -r file; do
-    if file_has_option "${file}" local; then
+    if [ -n "${given_env}" ]; then
+      env="${given_env}"
+    elif file_has_option "${file}" local; then
       ! file_has_option "${file}" target \
         || die "task cannot be 'local' and 'target' at same time: '${file}'"
       env=local
     elif file_has_option "${file}" target; then
       env=target
     else
-      [ -n "${default_env}" ] \
-        || die "no environment specified for the task '${file}' and there are no default one"
-      env="${default_env}"
+      die "no environment specified for the task '${file}' and there are no given one"
     fi
 
     if [ "${env}" != "${prev_env}" -a -n "${prev_env}" ]; then
