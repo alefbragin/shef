@@ -2,11 +2,8 @@
 
 PROGRAM=shef
 VERSION=0.0.0
+STDIN_PATH=/dev/stdin
 INCLUDE_PATH="${SHEF_INCLUDE_PATH:-/usr/local/lib/shef}"
-STDIN_PATH="${SHEF_STDIN_PATH:-/dev/stdin}"
-
-NL='
-'
 
 ERROR_TASK_RUN='cannot run task file'
 ERROR_VARIABLE_EMPTY="required variable '%s' is empty"
@@ -77,25 +74,25 @@ task_find() {
   done
 }
 
+# TODO: doc empty if already
 search_library() {
   print "$1" | LC_ALL=C grep --quiet '^[0-9a-z-]\+$' \
     || die "bad library name: '$1'"
 
-  hash_key="$(print "shef_include_hash/$1" | tr '/' 'S')" \
+  hash_key="$(print "shef_library_hashC$1" | tr '/' 'S')" \
     || die 'cannot make hash key for the library'
   eval "hash_value=\"\${${hash_key}}\""
 
-  if [ -n "${hash_value}" ]; then
-    println "${hash_value}"
+  if [ "${hash_value}" = found ]; then
+    shef_library_path=
     return 0
   fi
 
   IFS=:
   for path in "${shef_include_path}"; do
-    lib_path="${path}/$1.sh"
-    if [ -f "${lib_path}" ]; then
-      eval "${hash_key}=\"\${lib_path}\""
-      println "${lib_path}"
+    shef_library_path="${path}/$1.sh"
+    if [ -f "${shef_library_path}" ]; then
+      eval "${hash_key}=found"
       return 0
     fi
   done
@@ -109,27 +106,26 @@ mktemp_task() {
   trap "shred ${shef_task_file}; rm -f ${shef_task_file}" EXIT
 }
 
-# write_task() {
-#   cat "$1" >> "${shef_task_file}" || die 'cannot write to temp task file'
-# }
-
-write_task_line() {
-  println "$1" >> "${shef_task_file}" || die 'cannot write to temp task file'
-}
-
-write_inclusion() {
-  
-}
-
 write_task() {
-  all_inclusions_are_parses=no
   while IFS= read -r line; do
-    write_task_line "${line}"
-    if [ "${all_inclusions_are_parses}" = no ]; then
+    println "$1" >> "${shef_task_file}" || die 'cannot write to temp task file'
+    if [ "${all_inclusions_are_parses:-no}" = no ]; then
       case "${line#${line%%[![:blank:]]*}}" in
-        \#.*) write_inclusion "$1" ;;
-        \#*|'') ;;
-        *) all_inclusions_are_parses=yes ;;
+        \#.*)
+          lib="$(print "$1" \
+            | sed 's/\(^[[:blank:]]*#\.[[:blank:]]*\|[[:blank:]]*$\)//g')" || die
+
+          search_library "${lib}"
+          if [ -n "${shef_library_path}" ]; then
+            write_task "${shef_library_path}"
+          fi
+          all_inclusions_are_parses=no
+        ;;
+        \#*|'')
+        ;;
+        *)
+          all_inclusions_are_parses=yes
+        ;;
       esac
     fi
   done < "$1"
@@ -185,7 +181,7 @@ cmd_shef() {
       shift 2
     ;;
     --environment|-e)
-      given_env="$(parse_env "$2")" || die
+      shef_given_env="$(parse_env "$2")" || die
       shift 2
     ;;
     --)
@@ -200,8 +196,8 @@ cmd_shef() {
 
   prev_env=
   while IFS= read -r file; do
-    if [ -n "${given_env}" ]; then
-      env="${given_env}"
+    if [ -n "${shef_given_env}" ]; then
+      env="${shef_given_env}"
     elif file_has_option "${file}" local; then
       ! file_has_option "${file}" target \
         || die "task cannot be 'local' and 'target' at same time: '${file}'"
@@ -216,14 +212,7 @@ cmd_shef() {
       run_env "${prev_env}"
     fi
 
-    if fnmatch '*.inc' "${file}"; then
-      while IFS= read -r lib; do
-        lib_path="$(search_library "${lib}")" || die
-        write_task "${lib_path}"
-      done < "${file}"
-    else
-      write_task "${file}"
-    fi
+    write_task "${file}"
 
     prev_env="${env}"
   done << EOF
