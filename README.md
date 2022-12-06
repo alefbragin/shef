@@ -26,6 +26,10 @@ SHEF_INCLUDE_PATH=/home/user/.local/lib/shef:/usr/local/lib/shef
 
 You can use first task argument as config.
 
+## Libraries names guarantees
+
+`user/` and `project/` prefixes never be used by Shef library.
+
 ## TODO
 
 ### First priority:
