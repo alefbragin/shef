@@ -6,6 +6,7 @@ STDIN_PATH=/dev/stdin
 INCLUDE_PATH="${SHEF_INCLUDE_PATH:-/usr/local/lib/shef}"
 
 ERROR_TASK_RUN='cannot run task file'
+ERROR_TASK_WRITE='cannot write to temp task file'
 ERROR_VARIABLE_EMPTY="required variable '%s' is empty"
 
 # Ensure that `printf` program exists
@@ -76,7 +77,7 @@ task_find() {
 
 # TODO: doc empty if already
 search_library() {
-  print "$1" | LC_ALL=C grep --quiet '^[0-9a-z-]\+$' \
+  print "$1" | LC_ALL=C grep --quiet '^[0-9a-z/-]\+$' \
     || die "bad library name: '$1'"
 
   hash_key="$(print "shef_library_hashC$1" | tr '/' 'S')" \
@@ -107,32 +108,27 @@ mktemp_task() {
 }
 
 write_task_line() {
-    println "$1" >> "${shef_task_file}" || die 'cannot write to temp task file'
+  println "$1" >> "${shef_task_file}" || die "${ERROR_TASK_WRITE}"
 }
 
 write_task() {
   while IFS= read -r line; do
     write_task_line "${line}"
-    if [ "${all_inclusions_are_parses:-no}" = no ]; then
-      case "${line#${line%%[![:blank:]]*}}" in
-        \#.*)
-          lib="$(print "${line}" \
-            | sed 's/\(^[[:blank:]]*#\.[[:blank:]]*\|[[:blank:]]*$\)//g')" || die
+    case "${line#${line%%[![:blank:]]*}}" in
+      \#.*)
+        lib="$(print "${line}" \
+          | sed 's/\(^[[:blank:]]*#\.[[:blank:]]*\|[[:blank:]]*$\)//g')" || die
 
-          search_library "${lib}"
-          if [ -n "${shef_library_path}" ]; then
-            write_task "${shef_library_path}"
-          fi
-          all_inclusions_are_parses=no
-        ;;
-        \#*|'')
-        ;;
-        *)
-          all_inclusions_are_parses=yes
-        ;;
-      esac
-    fi
-  done < "$1"
+        search_library "${lib}"
+        if [ -n "${shef_library_path}" ]; then
+          write_task < "${shef_library_path}"
+        fi
+      ;;
+      \#*|'') continue ;;
+      *) break ;;
+    esac
+  done
+  cat >> "${shef_task_file}" || die "${ERROR_TASK_WRITE}"
 }
 
 run_env() {
@@ -220,7 +216,7 @@ cmd_shef() {
       write_task_line
     fi
 
-    write_task "${file}"
+    write_task < "${file}"
 
     prev_env="${env}"
   done << EOF
