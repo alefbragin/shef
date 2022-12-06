@@ -106,13 +106,17 @@ mktemp_task() {
   trap "shred ${shef_task_file}; rm -f ${shef_task_file}" EXIT
 }
 
+write_task_line() {
+    println "$1" >> "${shef_task_file}" || die 'cannot write to temp task file'
+}
+
 write_task() {
   while IFS= read -r line; do
-    println "$1" >> "${shef_task_file}" || die 'cannot write to temp task file'
+    write_task_line "${line}"
     if [ "${all_inclusions_are_parses:-no}" = no ]; then
       case "${line#${line%%[![:blank:]]*}}" in
         \#.*)
-          lib="$(print "$1" \
+          lib="$(print "${line}" \
             | sed 's/\(^[[:blank:]]*#\.[[:blank:]]*\|[[:blank:]]*$\)//g')" || die
 
           search_library "${lib}"
@@ -210,6 +214,10 @@ cmd_shef() {
 
     if [ "${env}" != "${prev_env}" -a -n "${prev_env}" ]; then
       run_env "${prev_env}"
+    fi
+
+    if [ -n "${prev_env}" ]; then
+      write_task_line
     fi
 
     write_task "${file}"
