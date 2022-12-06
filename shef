@@ -187,6 +187,7 @@ cmd_shef() {
   make_temp_task
 
   prev_env=
+  exec 3<&0 || die
   while IFS= read -r file; do
     if [ -n "${shef_given_env}" ]; then
       env="${shef_given_env}"
@@ -204,12 +205,15 @@ cmd_shef() {
       run_env "${prev_env}"
     fi
 
+    exec 4<&0 && exec 0<&3 || die
     write_task < "${file}"
+    exec 0<&4 && exec 4<&- || die
 
     prev_env="${env}"
   done << EOF
 ${files}
 EOF
+  exec 3<&- || die
 
   run_env "${env}"
 }
