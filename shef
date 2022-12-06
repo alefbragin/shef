@@ -20,7 +20,7 @@ println() {
   printf '%s\n' "$1"
 }
 
-usage_print() {
+print_usage() {
   indent="$(print "${PROGRAM}" | tr '[:print:]' ' ')" || exit 1
   print "Usage:
     ${PROGRAM} --version | -V
@@ -45,24 +45,20 @@ die() {
   fi
 
   if [ "${option}" = --usage ]; then
-    usage_print 1>&2
+    print_usage 1>&2
   fi
 
   exit 1
 }
 
-fnmatch() {
-  case "$2" in
-    $1) return 0 ;;
+file_has_option() {
+  case "$1" in
+    *.$2.*) return 0 ;;
     *) return 1 ;;
   esac
 }
 
-file_has_option() {
-  fnmatch "*.$2.*" "$1"
-}
-
-task_find() {
+find_task() {
   for task; do
     if [ "${task}" = - ]; then
       println "${STDIN_PATH}"
@@ -101,19 +97,15 @@ search_library() {
   die "cannot find library: '$1'"
 }
 
-mktemp_task() {
+make_temp_task() {
   shef_task_file="$(mktemp --tmpdir shef.XXXXXXXXXX.sh)" \
     || die 'cannot create temp file for task script'
   trap "shred ${shef_task_file}; rm -f ${shef_task_file}" EXIT
 }
 
-write_task_line() {
-  println "$1" >> "${shef_task_file}" || die "${ERROR_TASK_WRITE}"
-}
-
 write_task() {
   while IFS= read -r line; do
-    write_task_line "${line}"
+    println "${line}" >> "${shef_task_file}" || die "${ERROR_TASK_WRITE}"
     case "${line#${line%%[![:blank:]]*}}" in
       \#.*)
         lib="$(print "${line}" \
@@ -160,7 +152,7 @@ parse_env() {
   esac
 }
 
-cmd_version_print() {
+cmd_print_version() {
   [ $# -eq 0 ] || die --usage "extra argument: '%s'" "$@"
   printf 'shef version %s\n' "${VERSION}"
 }
@@ -190,9 +182,9 @@ cmd_shef() {
     ;;
   esac done
 
-  files="$(task_find "${@:--}")" || die
+  files="$(find_task "${@:--}")" || die
 
-  mktemp_task
+  make_temp_task
 
   prev_env=
   while IFS= read -r file; do
@@ -212,10 +204,6 @@ cmd_shef() {
       run_env "${prev_env}"
     fi
 
-    if [ -n "${prev_env}" ]; then
-      write_task_line
-    fi
-
     write_task < "${file}"
 
     prev_env="${env}"
@@ -227,7 +215,7 @@ EOF
 }
 
 case "$1" in
-  --version|-V) shift; cmd_version_print "$@" ;;
-  --help) usage_print ;;
+  --version|-V) shift; cmd_print_version "$@" ;;
+  --help) print_usage ;;
   *) cmd_shef "$@" ;;
 esac
