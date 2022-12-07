@@ -28,20 +28,19 @@ You can use first task argument as config.
 
 ## Libraries names guarantees
 
-`user/` and `project/` prefixes never be used by Shef library.
+`custom/`, `user/` and `project/` prefixes never be used by Shef libraries.
 
 ## TODO
 
 ### First priority:
 
-- Recursive inclusion for libraries
 - PIPEs for task running instead of temporary regular file
 
 ### Under consideration:
 
+- Custom environments, e.g. `stage`, `prod`, `docker` etc (not only local/target)
 - Ability to run tasks in other languages: `*.bash`, `*.py` etc
 - Parallel execution for tasks in different environments (local/target)
-- Custom environments, e.g. `stage`, `prod`, `docker` etc (not only local/target)
 
 ## License
 
