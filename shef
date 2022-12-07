@@ -71,7 +71,18 @@ find_task() {
   done
 }
 
-# TODO: doc empty if already
+##
+# Search library by name and print it real path. If the library has already been found
+# in a previous function call, the resulting real path will be empty.
+#
+# Arguments:
+#   $1 Library name
+# Globals:
+#   $shef_library_path Resulting real path or empty string
+# Dies if:
+#   - bad library name
+#   - cannot find library
+##
 search_library() {
   print "$1" | LC_ALL=C grep --quiet '^[0-9a-z/-]\+$' \
     || die "bad library name: '$1'"
@@ -126,17 +137,14 @@ write_task() {
 run_env() {
   case "$1" in
     local)
-      cat < "${shef_task_file}" || die "${ERROR_TASK_RUN}"
-      # sh < "${shef_task_file}" || die "${ERROR_TASK_RUN}"
+      sh < "${shef_task_file}" || die "${ERROR_TASK_RUN}"
     ;;
     target)
       [ -n "${SHEF_TARGET_HOST}" ] || die "${ERROR_VARIABLE_EMPTY}" SHEF_TARGET_HOST
       [ -n "${SHEF_TARGET_USER}" ] || die "${ERROR_VARIABLE_EMPTY}" SHEF_TARGET_USER
 
-      cat < "${shef_task_file}" || die "${ERROR_TASK_RUN}"
-
-      # ssh -T "${SHEF_TARGET_USER}@${SHEF_TARGET_HOST}" -- sh < "${shef_task_file}" \
-      #   || die "${ERROR_TASK_RUN}"
+      ssh -T "${SHEF_TARGET_USER}@${SHEF_TARGET_HOST}" -- sh < "${shef_task_file}" \
+        || die "${ERROR_TASK_RUN}"
     ;;
   esac
 
