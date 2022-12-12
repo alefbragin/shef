@@ -16,64 +16,64 @@ NL='
 printf '' || exit 1
 
 print() {
-  printf '%s' "$1"
+	printf '%s' "$1"
 }
 
 println() {
-  printf '%s\n' "$1"
+	printf '%s\n' "$1"
 }
 
 print_usage() {
-  indent="$(print "${PROGRAM}" | tr '[:print:]' ' ')" || exit 1
-  print "Usage:
-    ${PROGRAM} --version | -V
-    ${PROGRAM} [--include-path=<path> | -I <path>]
-    ${indent} [--environment=l[ocal]|t[arget] | -e l[ocal]|t[arget]]
-    ${indent} [--] [<task>...]
+	indent="$(print "${PROGRAM}" | tr '[:print:]' ' ')" || exit 1
+	print "Usage:
+		${PROGRAM} --version | -V
+		${PROGRAM} [--include-path=<path> | -I <path>]
+		${indent} [--environment=l[ocal]|t[arget] | -e l[ocal]|t[arget]]
+		${indent} [--] [<task>...]
 "
 }
 
 die() {
-  if [ "$1" = --usage ]; then
-    option="$1" && shift
-  fi
+	if [ "$1" = --usage ]; then
+		option="$1" && shift
+	fi
 
-  if [ $# -gt 0 ]; then
-    format="$1" && shift
-    printf "${PROGRAM}: ${format}\n" "$@" 1>&2
+	if [ $# -gt 0 ]; then
+		format="$1" && shift
+		printf "${PROGRAM}: ${format}\n" "$@" 1>&2
 
-    if [ "${option}" = --usage ]; then
-      println 1>&2
-    fi
-  fi
+		if [ "${option}" = --usage ]; then
+			println 1>&2
+		fi
+	fi
 
-  if [ "${option}" = --usage ]; then
-    print_usage 1>&2
-  fi
+	if [ "${option}" = --usage ]; then
+		print_usage 1>&2
+	fi
 
-  exit 1
+	exit 1
 }
 
 file_has_option() {
-  case "$1" in
-    *.$2.*) return 0 ;;
-    *) return 1 ;;
-  esac
+	case "$1" in
+		*.$2.*) return 0 ;;
+		*) return 1 ;;
+	esac
 }
 
 find_task() {
-  for task; do
-    if [ "${task}" = - ]; then
-      println "${STDIN_PATH}"
-    else
-      find_result="$(find "${task}" -type f -name '*.sh')" \
-        || die "cannot find for the task path: '${task}'"
-      [ -n "${find_result}" ] || die "there are no task files in the path: '${task_path}'"
-      LC_ALL=C sort <<- EOF || die
+	for task; do
+		if [ "${task}" = - ]; then
+			println "${STDIN_PATH}"
+		else
+			find_result="$(find "${task}" -type f -name '*.sh')" \
+				|| die "cannot find for the task path: '${task}'"
+			[ -n "${find_result}" ] || die "there are no task files in the path: '${task_path}'"
+			LC_ALL=C sort <<- EOF || die
 				${find_result}
 			EOF
-    fi
-  done
+		fi
+	done
 }
 
 # TODO: Doc about hash per environment
@@ -82,166 +82,165 @@ find_task() {
 # in a previous function call, the resulting real path will be empty.
 #
 # Arguments:
-#   $1 Library name
+#	$1 Library name
 # Globals:
-#   $shef_library_path Resulting real path or empty string
+#	$shef_library_path Resulting real path or empty string
 # Dies if:
-#   - bad library name
-#   - cannot find library
+#	- bad library name
+#	- cannot find library
 ##
 search_library() {
-  LC_ALL=C grep --quiet '^[0-9a-z/-]\+$' <<- EOF \
-    || die "bad library name: '$1'"
+	LC_ALL=C grep --quiet '^[0-9a-z/-]\+$' <<- EOF || die "bad library name: '$1'"
 		$1
 	EOF
 
-  hash_key="$(print "shef_library_hashC$1" | tr '/' 'S')" \
-    || die 'cannot make hash key for the library'
-  eval "hash_value=\"\${${hash_key}}\""
+	hash_key="$(print "shef_library_hashC$1" | tr '/' 'S')" \
+		|| die 'cannot make hash key for the library'
+	eval "hash_value=\"\${${hash_key}}\""
 
-  if [ "${hash_value}" = found ]; then
-    shef_library_path=
-    return 0
-  fi
+	if [ "${hash_value}" = found ]; then
+		shef_library_path=
+		return 0
+	fi
 
-  IFS=:
-  for path in "${shef_include_path}"; do
-    shef_library_path="${path}/$1.sh"
-    if [ -f "${shef_library_path}" ]; then
-      eval "${hash_key}=found"
-      return 0
-    fi
-  done
+	IFS=:
+	for path in "${shef_include_path}"; do
+		shef_library_path="${path}/$1.sh"
+		if [ -f "${shef_library_path}" ]; then
+			eval "${hash_key}=found"
+			return 0
+		fi
+	done
 
-  die "cannot find library: '$1'"
+	die "cannot find library: '$1'"
 }
 
 include_libraries() {
-  while IFS= read -r line; do
-    println "${line}"
-    case "${line#${line%%[![:blank:]]*}}" in
-      \#.*)
-        lib="$(print "${line}" \
-          | sed 's/\(^[[:blank:]]*#\.[[:blank:]]*\|[[:blank:]]*$\)//g')" || die
+	while IFS= read -r line; do
+		println "${line}"
+		case "${line#${line%%[![:blank:]]*}}" in
+			\#.*)
+				lib="$(print "${line}" \
+					| sed 's/\(^[[:blank:]]*#\.[[:blank:]]*\|[[:blank:]]*$\)//g')" || die
 
-        search_library "${lib}"
-        if [ -n "${shef_library_path}" ]; then
-          include_libraries < "${shef_library_path}"
-        fi
-      ;;
-      \#*|'') continue ;;
-      *) break ;;
-    esac
-  done
-  cat
+				search_library "${lib}"
+				if [ -n "${shef_library_path}" ]; then
+					include_libraries < "${shef_library_path}"
+				fi
+			;;
+			\#*|'') continue ;;
+			*) break ;;
+		esac
+	done
+	cat
 }
 
 # TODO: respect '-' as stdin
 run_in_environment() {
-  case "$1" in
-    local) runner="${LOCAL_RUNNER}" ;;
-    target) runner="${TARGET_RUNNER}" ;;
-  esac
+	case "$1" in
+		local) runner="${LOCAL_RUNNER}" ;;
+		target) runner="${TARGET_RUNNER}" ;;
+	esac
 
-  if [ ! -d "${RUN_PATH}" ]; then
-    mkdir --parent "${RUN_PATH}" || die "cannot create run path: '${RUN_PATH}'"
-  fi
+	if [ ! -d "${RUN_PATH}" ]; then
+		mkdir --parent "${RUN_PATH}" || die "cannot create run path: '${RUN_PATH}'"
+	fi
 
-  fifo="${RUN_PATH}/$$.$1.fifo"
-  # TODO: Remove clashed old FIFO-file optionaly
-  mkfifo "${fifo}" || die "cannot create temporary FIFO: '${fifo}'"
-  exec 3<>"${fifo}" 4<"${fifo}" || die
-  rm "${fifo}" || die "cannot remove temporary FIFO: '${fifo}'"
+	fifo="${RUN_PATH}/$$.$1.fifo"
+	# TODO: Remove clashed old FIFO-file optionaly
+	mkfifo "${fifo}" || die "cannot create temporary FIFO: '${fifo}'"
+	exec 3<>"${fifo}" 4<"${fifo}" || die
+	rm "${fifo}" || die "cannot remove temporary FIFO: '${fifo}'"
 
-  while IFS= read -r env_file; do
-    include_libraries < "${env_file}"
-  done >&3 &
+	while IFS= read -r env_file; do
+		include_libraries < "${env_file}"
+	done >&3 &
 
-  exec 3>&- || die
+	exec 3>&- || die
 
-  ${runner} <&4 || die 'cannot run task file'
+	${runner} <&4 || die 'cannot run task file'
 
-  wait $! || die 'subprocess for task preprocession fails'
+	wait $! || die 'subprocess for task preprocession fails'
 }
 
 file_env() {
-  if [ -n "${shef_given_env}" ]; then
-    shef_env="${shef_given_env}"
-  elif file_has_option "$1" local; then
-    ! file_has_option "$1" target \
-      || die "task cannot be 'local' and 'target' at same time: '$1'"
-    shef_env=local
-  elif file_has_option "$1" target; then
-    shef_env=target
-  else
-    die "no environment specified for the task '$1' and there are no given one"
-  fi
+	if [ -n "${shef_given_env}" ]; then
+		shef_env="${shef_given_env}"
+	elif file_has_option "$1" local; then
+		! file_has_option "$1" target \
+			|| die "task cannot be 'local' and 'target' at same time: '$1'"
+		shef_env=local
+	elif file_has_option "$1" target; then
+		shef_env=target
+	else
+		die "no environment specified for the task '$1' and there are no given one"
+	fi
 }
 
 cmd_print_version() {
-  [ $# -eq 0 ] || die --usage "extra argument: '%s'" "$@"
-  printf 'shef version %s\n' "${VERSION}"
+	[ $# -eq 0 ] || die --usage "extra argument: '%s'" "$@"
+	printf 'shef version %s\n' "${VERSION}"
 }
 
 cmd_shef() {
-  options="$(getopt \
-    --options I:e: \
-    --longoptions include-path:,environment: \
-    -- "$@")" || die --usage
+	options="$(getopt \
+		--options I:e: \
+		--longoptions include-path:,environment: \
+		-- "$@")" || die --usage
 
-  eval set -- "${options}"
+	eval set -- "${options}"
 
-  shef_include_path="${INCLUDE_PATH}"
+	shef_include_path="${INCLUDE_PATH}"
 
-  while :; do case "$1" in
-    --include-path|-I)
-      shef_include_path="$2:${shef_include_path}"
-      shift 2
-    ;;
-    --environment|-e)
-      case "$2" in
-        local|l) shef_given_env=local ;;
-        target|t) shef_given_env=target ;;
-        *) die --usage "unknown environment '$2'" ;;
-      esac
-      shift 2
-    ;;
-    --)
-      shift
-      break
-    ;;
-  esac done
+	while :; do case "$1" in
+		--include-path|-I)
+			shef_include_path="$2:${shef_include_path}"
+			shift 2
+		;;
+		--environment|-e)
+			case "$2" in
+				local|l) shef_given_env=local ;;
+				target|t) shef_given_env=target ;;
+				*) die --usage "unknown environment '$2'" ;;
+			esac
+			shift 2
+		;;
+		--)
+			shift
+			break
+		;;
+	esac done
 
-  files="$(find_task "${@:--}")" || die
+	files="$(find_task "${@:--}")" || die
 
-  if IFS= read -r file; then
-    file_env "${file}"
-    env_files="${file}"
+	if IFS= read -r file; then
+		file_env "${file}"
+		env_files="${file}"
 
-    while IFS= read -r file; do
-      prev_env="${shef_env}"
-      file_env "${file}"
+		while IFS= read -r file; do
+			prev_env="${shef_env}"
+			file_env "${file}"
 
-      if [ "${prev_env}" = "${shef_env}" ]; then
-        env_files="${env_files}${NL}${file}"
-      else
-        run_in_environment "${prev_env}" <<- EOF
+			if [ "${prev_env}" = "${shef_env}" ]; then
+				env_files="${env_files}${NL}${file}"
+			else
+				run_in_environment "${prev_env}" <<- EOF
 					${env_files}
 				EOF
-        env_files="${file}"
-      fi
-    done
+				env_files="${file}"
+			fi
+		done
 
-    run_in_environment "${shef_env}" <<- EOF
+		run_in_environment "${shef_env}" <<- EOF
 			${env_files}
 		EOF
-  fi <<- EOF
+	fi <<- EOF
 		${files}
 	EOF
 }
 
 case "$1" in
-  --version|-V) shift; cmd_print_version "$@" ;;
-  --help) print_usage ;;
-  *) cmd_shef "$@" ;;
+	--version|-V) shift; cmd_print_version "$@" ;;
+	--help) print_usage ;;
+	*) cmd_shef "$@" ;;
 esac
