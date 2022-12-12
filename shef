@@ -3,11 +3,14 @@
 PROGRAM=shef
 VERSION=0.0.0
 STDIN_PATH=/dev/stdin
+RUN_PATH="${SHEF_RUN_PATH:-/run/user/$(id -u)/shef}" || exit 1
 INCLUDE_PATH="${SHEF_INCLUDE_PATH:-/usr/local/lib/shef}"
 
-ERROR_TASK_RUN='cannot run task file'
-ERROR_TASK_WRITE='cannot write to temp task file'
-ERROR_VARIABLE_EMPTY="required variable '%s' is empty"
+LOCAL_RUNNER="${SHEF_LOCAL_RUNNER:-sh}"
+TARGET_RUNNER="${SHEF_TARGET_RUNNER:-ssh -T "${SHEF_TARGET_USER}@${SHEF_TARGET_HOST}" -- sh}"
+
+NL='
+'
 
 # Ensure that `printf` program exists
 printf '' || exit 1
@@ -66,11 +69,14 @@ find_task() {
       find_result="$(find "${task}" -type f -name '*.sh')" \
         || die "cannot find for the task path: '${task}'"
       [ -n "${find_result}" ] || die "there are no task files in the path: '${task_path}'"
-      print "${find_result}" | LC_ALL=C sort || die
+      LC_ALL=C sort <<- EOF || die
+				${find_result}
+			EOF
     fi
   done
 }
 
+# TODO: Doc about hash per environment
 ##
 # Search library by name and print it real path. If the library has already been found
 # in a previous function call, the resulting real path will be empty.
@@ -84,8 +90,10 @@ find_task() {
 #   - cannot find library
 ##
 search_library() {
-  print "$1" | LC_ALL=C grep --quiet '^[0-9a-z/-]\+$' \
+  LC_ALL=C grep --quiet '^[0-9a-z/-]\+$' <<- EOF \
     || die "bad library name: '$1'"
+		$1
+	EOF
 
   hash_key="$(print "shef_library_hashC$1" | tr '/' 'S')" \
     || die 'cannot make hash key for the library'
@@ -108,15 +116,9 @@ search_library() {
   die "cannot find library: '$1'"
 }
 
-make_temp_task() {
-  shef_task_file="$(mktemp --tmpdir shef.XXXXXXXXXX.sh)" \
-    || die 'cannot create temp file for task script'
-  trap "shred ${shef_task_file}; rm -f ${shef_task_file}" EXIT
-}
-
-write_task() {
+include_libraries() {
   while IFS= read -r line; do
-    println "${line}" >> "${shef_task_file}" || die "${ERROR_TASK_WRITE}"
+    println "${line}"
     case "${line#${line%%[![:blank:]]*}}" in
       \#.*)
         lib="$(print "${line}" \
@@ -124,40 +126,56 @@ write_task() {
 
         search_library "${lib}"
         if [ -n "${shef_library_path}" ]; then
-          write_task < "${shef_library_path}"
+          include_libraries < "${shef_library_path}"
         fi
       ;;
       \#*|'') continue ;;
       *) break ;;
     esac
   done
-  cat >> "${shef_task_file}" || die "${ERROR_TASK_WRITE}"
+  cat
 }
 
-run_env() {
+# TODO: respect '-' as stdin
+run_in_environment() {
   case "$1" in
-    local)
-      sh < "${shef_task_file}" || die "${ERROR_TASK_RUN}"
-    ;;
-    target)
-      [ -n "${SHEF_TARGET_HOST}" ] || die "${ERROR_VARIABLE_EMPTY}" SHEF_TARGET_HOST
-      [ -n "${SHEF_TARGET_USER}" ] || die "${ERROR_VARIABLE_EMPTY}" SHEF_TARGET_USER
-
-      ssh -T "${SHEF_TARGET_USER}@${SHEF_TARGET_HOST}" -- sh < "${shef_task_file}" \
-        || die "${ERROR_TASK_RUN}"
-    ;;
+    local) runner="${LOCAL_RUNNER}" ;;
+    target) runner="${TARGET_RUNNER}" ;;
   esac
 
-  shred "${shef_task_file}" || die 'cannot shred temp task file'
-  > "${shef_task_file}" || die 'cannot truncate temp task file'
+  if [ ! -d "${RUN_PATH}" ]; then
+    mkdir --parent "${RUN_PATH}" || die "cannot create run path: '${RUN_PATH}'"
+  fi
+
+  fifo="${RUN_PATH}/$$.$1.fifo"
+  # TODO: Remove clashed old FIFO-file optionaly
+  mkfifo "${fifo}" || die "cannot create temporary FIFO: '${fifo}'"
+  exec 3<>"${fifo}" 4<"${fifo}" || die
+  rm "${fifo}" || die "cannot remove temporary FIFO: '${fifo}'"
+
+  while IFS= read -r env_file; do
+    include_libraries < "${env_file}"
+  done >&3 &
+
+  exec 3>&- || die
+
+  ${runner} <&4 || die 'cannot run task file'
+
+  wait $! || die 'subprocess for task preprocession fails'
 }
 
-parse_env() {
-  case "$1" in
-    local|l) print local ;;
-    target|t) print target ;;
-    *) die --usage "cannot parse environment '$1'" ;;
-  esac
+file_env() {
+  if [ -n "${shef_given_env}" ]; then
+    shef_env="${shef_given_env}"
+  elif file_has_option "$1" local; then
+    ! file_has_option "$1" target \
+      || die "task cannot be 'local' and 'target' at same time: '$1'"
+    shef_env=local
+  elif file_has_option "$1" target; then
+    shef_env=target
+  else
+    die "no environment specified for the task '$1' and there are no given one"
+  fi
 }
 
 cmd_print_version() {
@@ -181,7 +199,11 @@ cmd_shef() {
       shift 2
     ;;
     --environment|-e)
-      shef_given_env="$(parse_env "$2")" || die
+      case "$2" in
+        local|l) shef_given_env=local ;;
+        target|t) shef_given_env=target ;;
+        *) die --usage "unknown environment '$2'" ;;
+      esac
       shift 2
     ;;
     --)
@@ -192,38 +214,30 @@ cmd_shef() {
 
   files="$(find_task "${@:--}")" || die
 
-  make_temp_task
+  if IFS= read -r file; then
+    file_env "${file}"
+    env_files="${file}"
 
-  prev_env=
-  exec 3<&0 || die
-  while IFS= read -r file; do
-    if [ -n "${shef_given_env}" ]; then
-      env="${shef_given_env}"
-    elif file_has_option "${file}" local; then
-      ! file_has_option "${file}" target \
-        || die "task cannot be 'local' and 'target' at same time: '${file}'"
-      env=local
-    elif file_has_option "${file}" target; then
-      env=target
-    else
-      die "no environment specified for the task '${file}' and there are no given one"
-    fi
+    while IFS= read -r file; do
+      prev_env="${shef_env}"
+      file_env "${file}"
 
-    if [ "${env}" != "${prev_env}" -a -n "${prev_env}" ]; then
-      run_env "${prev_env}"
-    fi
+      if [ "${prev_env}" = "${shef_env}" ]; then
+        env_files="${env_files}${NL}${file}"
+      else
+        run_in_environment "${prev_env}" <<- EOF
+					${env_files}
+				EOF
+        env_files="${file}"
+      fi
+    done
 
-    exec 4<&0 && exec 0<&3 || die
-    write_task < "${file}"
-    exec 0<&4 && exec 4<&- || die
-
-    prev_env="${env}"
-  done << EOF
-${files}
-EOF
-  exec 3<&- || die
-
-  run_env "${env}"
+    run_in_environment "${shef_env}" <<- EOF
+			${env_files}
+		EOF
+  fi <<- EOF
+		${files}
+	EOF
 }
 
 case "$1" in
