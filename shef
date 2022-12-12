@@ -135,7 +135,7 @@ include_libraries() {
 	cat
 }
 
-# TODO: respect '-' as stdin
+# TODO: Doc for descriptors
 run_in_environment() {
 	case "$1" in
 		local) runner="${LOCAL_RUNNER}" ;;
@@ -149,16 +149,20 @@ run_in_environment() {
 	fifo="${RUN_PATH}/$$.$1.fifo"
 	# TODO: Remove clashed old FIFO-file optionaly
 	mkfifo "${fifo}" || die "cannot create temporary FIFO: '${fifo}'"
-	exec 3<>"${fifo}" 4<"${fifo}" || die
+	exec 5<>"${fifo}" 6<"${fifo}" || die
 	rm "${fifo}" || die "cannot remove temporary FIFO: '${fifo}'"
 
 	while IFS= read -r env_file; do
+		exec 4<&0 && exec 0<&3 || die
 		include_libraries < "${env_file}"
-	done >&3 &
+		exec 0<&4 && exec 4<&- || die
+	done >&5 &
 
-	exec 3>&- || die
+	# TODO: Is this good?
+	exec 5<&- && exec 5>&- || die
 
-	${runner} <&4 || die 'cannot run task file'
+	${runner} <&6 || die 'cannot run task file'
+	exec 6<&- || die
 
 	wait $! || die 'subprocess for task preprocession fails'
 }
@@ -213,6 +217,7 @@ cmd_shef() {
 
 	files="$(find_task "${@:--}")" || die
 
+	exec 3<&0
 	if IFS= read -r file; then
 		file_env "${file}"
 		env_files="${file}"
@@ -237,6 +242,7 @@ cmd_shef() {
 	fi <<- EOF
 		${files}
 	EOF
+	exec 3<&-
 }
 
 case "$1" in
