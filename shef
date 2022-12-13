@@ -2,9 +2,9 @@
 
 PROGRAM=shef
 VERSION=0.0.0
-STDIN_PATH=/dev/stdin
-RUN_PATH="${SHEF_RUN_PATH:-/run/user/$(id -u)/shef}" || exit 1
-INCLUDE_PATH="${SHEF_INCLUDE_PATH:-/usr/local/lib/shef}"
+SHEF_STDIN_PATH="${SHEF_STDIN_PATH:-/dev/stdin}"
+SHEF_RUNTIME_PATH="${SHEF_RUNTIME_PATH:-/run/user/$(id -u)/shef}" || exit 1
+SHEF_INCLUDE_PATH="${SHEF_INCLUDE_PATH:-/usr/local/lib/shef}"
 
 SHEF_LOCAL_RUNNER="${SHEF_LOCAL_RUNNER:-sh}"
 SHEF_REMOTE_RUNNER="${SHEF_REMOTE_RUNNER:-ssh -T ${SHEF_REMOTE_USER}@${SHEF_REMOTE_HOST} -- sh}"
@@ -70,7 +70,7 @@ file_has_option() {
 find_task() {
 	for task; do
 		if [ "${task}" = - ]; then
-			println "${STDIN_PATH}"
+			println "${SHEF_STDIN_PATH}"
 		else
 			find_result="$(find "${task}" -type f -name '*.sh')" \
 				|| die "cannot find for the task path: '${task}'"
@@ -150,11 +150,11 @@ run_in_environment() {
 	eval "runner=\"\${SHEF_${env_upper}_RUNNER}\"" || die
 	[ -n "${runner}" ] || die "no runner setup for the environment: '$1'"
 
-	if [ ! -d "${RUN_PATH}" ]; then
-		mkdir --parent "${RUN_PATH}" || die "cannot create run path: '${RUN_PATH}'"
+	if [ ! -d "${SHEF_RUNTIME_PATH}" ]; then
+		mkdir --parent "${SHEF_RUNTIME_PATH}" || die "cannot create run path: '${SHEF_RUNTIME_PATH}'"
 	fi
 
-	fifo="${RUN_PATH}/$$.$1.fifo"
+	fifo="${SHEF_RUNTIME_PATH}/$$.$1.fifo"
 	# TODO: Remove clashed old FIFO-file optionaly
 	mkfifo "${fifo}" || die "cannot create temporary FIFO: '${fifo}'"
 	exec 5<>"${fifo}" 6<"${fifo}" || die
@@ -175,7 +175,7 @@ run_in_environment() {
 }
 
 file_env() {
-	if [ "$1" = "${STDIN_PATH}" ]; then
+	if [ "$1" = "${SHEF_STDIN_PATH}" ]; then
 		[ -n "${shef_stdin_env}" ] || die 'no environment specified for the task from STDIN'
 		shef_env="${shef_stdin_env}"
 	else
