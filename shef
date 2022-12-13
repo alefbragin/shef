@@ -6,8 +6,8 @@ STDIN_PATH=/dev/stdin
 RUN_PATH="${SHEF_RUN_PATH:-/run/user/$(id -u)/shef}" || exit 1
 INCLUDE_PATH="${SHEF_INCLUDE_PATH:-/usr/local/lib/shef}"
 
-LOCAL_RUNNER="${SHEF_LOCAL_RUNNER:-sh}"
-TARGET_RUNNER="${SHEF_TARGET_RUNNER:-ssh -T "${SHEF_TARGET_USER}@${SHEF_TARGET_HOST}" -- sh}"
+SHEF_LOCAL_RUNNER="${SHEF_LOCAL_RUNNER:-sh}"
+SHEF_REMOTE_RUNNER="${SHEF_REMOTE_RUNNER:-ssh -T ${SHEF_REMOTE_USER}@${SHEF_REMOTE_HOST} -- sh}"
 
 NL='
 '
@@ -54,6 +54,12 @@ die() {
 	exit 1
 }
 
+check_sanity() {
+	LC_ALL=C grep --extended-regexp --quiet "$1" <<- EOF || die "$2: '%s'" "$3"
+		$3
+	EOF
+}
+
 file_has_option() {
 	case "$1" in
 		*.$2.*) return 0 ;;
@@ -90,13 +96,11 @@ find_task() {
 #	- cannot find library
 ##
 search_library() {
-	LC_ALL=C grep --quiet '^[0-9a-z/-]\+$' <<- EOF || die "bad library name: '$1'"
-		$1
-	EOF
+	check_sanity '^[0-9a-z/-]+$' 'bad library name' "$1"
 
-	hash_key="$(print "shef_library_hashC$1" | tr '/' 'S')" \
+	hash_key="$(print "shef_library_hashC$1" | tr '/-' 'S_')" \
 		|| die 'cannot make hash key for the library'
-	eval "hash_value=\"\${${hash_key}}\""
+	eval "hash_value=\"\${${hash_key}}\"" || die
 
 	if [ "${hash_value}" = found ]; then
 		shef_library_path=
@@ -107,7 +111,7 @@ search_library() {
 	for path in "${shef_include_path}"; do
 		shef_library_path="${path}/$1.sh"
 		if [ -f "${shef_library_path}" ]; then
-			eval "${hash_key}=found"
+			eval "${hash_key}=found" || die
 			return 0
 		fi
 	done
@@ -137,10 +141,14 @@ include_libraries() {
 
 # TODO: Doc for descriptors
 run_in_environment() {
-	case "$1" in
-		local) runner="${LOCAL_RUNNER}" ;;
-		target) runner="${TARGET_RUNNER}" ;;
-	esac
+	env_upper="$(
+		tr '[:lower:]' '[:upper:]' <<- EOF
+			$1
+		EOF
+	)" || die 'cannot convert environment name to uppercase'
+
+	eval "runner=\"\${SHEF_${env_upper}_RUNNER}\"" || die
+	[ -n "${runner}" ] || die "no runner setup for the environment: '$1'"
 
 	if [ ! -d "${RUN_PATH}" ]; then
 		mkdir --parent "${RUN_PATH}" || die "cannot create run path: '${RUN_PATH}'"
@@ -160,23 +168,19 @@ run_in_environment() {
 
 	exec 5>&- || die
 
-	${runner} <&6 || die 'cannot run task file'
+	${runner} <&6 || die "cannot run task file by runner: '${runner}'"
 	exec 6<&- || die
 
 	wait $! || die 'subprocess for task preprocession fails'
 }
 
 file_env() {
-	if [ -n "${shef_given_env}" ]; then
-		shef_env="${shef_given_env}"
-	elif file_has_option "$1" local; then
-		! file_has_option "$1" target \
-			|| die "task cannot be 'local' and 'target' at same time: '$1'"
-		shef_env=local
-	elif file_has_option "$1" target; then
-		shef_env=target
+	if [ "$1" = "${STDIN_PATH}" ]; then
+		[ -n "${shef_stdin_env}" ] || die 'no environment specified for the task from STDIN'
+		shef_env="${shef_stdin_env}"
 	else
-		die "no environment specified for the task '$1' and there are no given one"
+		shef_env="${1%.sh}"
+		shef_env="${shef_env##*[/.]}"
 	fi
 }
 
@@ -188,7 +192,7 @@ cmd_print_version() {
 cmd_shef() {
 	options="$(getopt \
 		--options I:e: \
-		--longoptions include-path:,environment: \
+		--longoptions include-path:,stdin-environment: \
 		-- "$@")" || die --usage
 
 	eval set -- "${options}"
@@ -200,12 +204,9 @@ cmd_shef() {
 			shef_include_path="$2:${shef_include_path}"
 			shift 2
 		;;
-		--environment|-e)
-			case "$2" in
-				local|l) shef_given_env=local ;;
-				target|t) shef_given_env=target ;;
-				*) die --usage "unknown environment '$2'" ;;
-			esac
+		--stdin-environment|-e)
+			check_sanity '^[0-9a-z-]+$' 'bad environment name' "$2"
+			shef_stdin_env="$2"
 			shift 2
 		;;
 		--)
