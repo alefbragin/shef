@@ -24,6 +24,7 @@ print_usage() {
 	cat <<- EOF || die 'cannot print usage'
 		Usage:
 		  ${PROGRAM} --version | -V
+		  ${PROGRAM} --help
 		  ${PROGRAM} [--include-path=<path> | -I <path>]
 		  ${indent} [--stdin-runner=<name> | -r <name>]
 		  ${indent} [--] [<task>...]
@@ -38,13 +39,10 @@ die() {
 	if [ $# -gt 0 ]; then
 		format="$1" && shift
 		printf "${PROGRAM}: ${format}\n" "$@" 1>&2
-
-		if [ "${show_usage}" = yes ]; then
-			echo 1>&2
-		fi
 	fi
 
 	if [ "${show_usage}" = yes ]; then
+		echo 1>&2
 		print_usage 1>&2
 	fi
 
@@ -76,7 +74,7 @@ find_task() {
 	done
 }
 
-# TODO: Doc about hash per environment
+# TODO: Doc about hash per runner env
 ##
 # Search library by name and print it real path. If the library has already been found
 # in a previous function call, the resulting real path will be empty.
@@ -136,16 +134,17 @@ include_libraries() {
 	cat
 }
 
-# TODO: Doc for descriptors
-run_in_environment() {
-	env_upper="$(tr_arg '[:lower:]' '[:upper:]' "$1")" \
-		|| die 'cannot convert environment name to uppercase'
+# TODO: Doc for file descriptors
+run() {
+	runner_uppercase_name="$(tr_arg '[:lower:]' '[:upper:]' "$1")" \
+		|| die 'cannot convert runner name to uppercase'
 
-	eval "runner=\"\${SHEF_${env_upper}_RUNNER}\"" || die
-	[ -n "${runner}" ] || die "no runner setup for the environment: '$1'"
+	eval "runner=\"\${SHEF_${runner_uppercase_name}_RUNNER}\"" || die
+	[ -n "${runner}" ] || die "no runner setup for this name: '$1'"
 
 	if [ ! -d "${SHEF_RUNTIME_PATH}" ]; then
-		mkdir --parent "${SHEF_RUNTIME_PATH}" || die "cannot create run path: '${SHEF_RUNTIME_PATH}'"
+		mkdir --parent "${SHEF_RUNTIME_PATH}" \
+			|| die "cannot create runtime path: '${SHEF_RUNTIME_PATH}'"
 	fi
 
 	fifo="${SHEF_RUNTIME_PATH}/$$.$1.fifo"
@@ -154,29 +153,29 @@ run_in_environment() {
 	exec 5<>"${fifo}" 6<"${fifo}" || die
 	rm "${fifo}" || die "cannot remove temporary FIFO: '${fifo}'"
 
-	while IFS= read -r env_file; do
-		exec 4<&0 && exec 0<&3 || die
-		include_libraries < "${env_file}"
-		exec 0<&4 && exec 4<&- || die
+	while IFS= read -r run_file; do
+		exec 4<&0 0<&3 || die
+		include_libraries < "${run_file}"
+		exec 0<&4 4<&- || die
 	done <<- EOF >&5 &
 		$2
 	EOF
 
 	exec 5>&- || die
 
-	${runner} <&6 || die "cannot run task file by runner: '${runner}'"
+	${runner} <&6 || die "cannot run task file with runner: '${runner}'"
 	exec 6<&- || die
 
 	wait $! || die 'subprocess for task preprocession fails'
 }
 
-file_env() {
+file_runner() {
 	if [ "$1" = "${SHEF_STDIN_PATH}" ]; then
-		[ -n "${shef_stdin_env}" ] || die 'no environment specified for the task from STDIN'
-		shef_env="${shef_stdin_env}"
+		[ -n "${shef_stdin_runner}" ] || die 'no runner specified for the task from STDIN'
+		shef_runner="${shef_stdin_runner}"
 	else
-		shef_env="${1%.sh}"
-		shef_env="${shef_env##*[/.]}"
+		shef_runner="${1%.sh}"
+		shef_runner="${shef_runner##*[/.]}"
 	fi
 }
 
@@ -187,8 +186,8 @@ cmd_print_version() {
 
 cmd_shef() {
 	options="$(getopt \
-		--options I:e: \
-		--longoptions include-path:,stdin-environment: \
+		--options I:r: \
+		--longoptions include-path:,stdin-runner: \
 		-- "$@")" || die --usage
 
 	eval set -- "${options}"
@@ -200,9 +199,9 @@ cmd_shef() {
 			shef_include_path="$2:${shef_include_path}"
 			shift 2
 		;;
-		--stdin-environment|-e)
-			check_sanity '^[0-9a-z-]+$' 'bad environment name' "$2"
-			shef_stdin_env="$2"
+		--stdin-runner|-r)
+			check_sanity '^[0-9a-z-]+$' 'bad runner name' "$2"
+			shef_stdin_runner="$2"
 			shift 2
 		;;
 		--)
@@ -211,28 +210,28 @@ cmd_shef() {
 		;;
 	esac done
 
-	files="$(find_task "${@:--}")" || die
+	task_files="$(find_task "${@:--}")" || die
 
 	exec 3<&0
-	if IFS= read -r file; then
-		file_env "${file}"
-		env_files="${file}"
+	if IFS= read -r task_file; then
+		file_runner "${task_file}"
+		run_files="${task_file}"
 
-		while IFS= read -r file; do
-			prev_env="${shef_env}"
-			file_env "${file}"
+		while IFS= read -r task_file; do
+			prev_runner="${shef_runner}"
+			file_runner "${task_file}"
 
-			if [ "${prev_env}" = "${shef_env}" ]; then
-				env_files="${env_files}${NL}${file}"
+			if [ "${prev_runner}" = "${shef_runner}" ]; then
+				run_files="${run_files}${NL}${task_file}"
 			else
-				run_in_environment "${prev_env}" "${env_files}"
-				env_files="${file}"
+				run "${prev_runner}" "${run_files}"
+				run_files="${task_file}"
 			fi
 		done
 
-		run_in_environment "${shef_env}" "${env_files}"
+		run "${shef_runner}" "${run_files}"
 	fi <<- EOF
-		${files}
+		${task_files}
 	EOF
 	exec 3<&-
 }
