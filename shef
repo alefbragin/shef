@@ -2,6 +2,7 @@
 
 PROGRAM=shef
 VERSION=0.0.0
+
 SHEF_STDIN_PATH="${SHEF_STDIN_PATH:-/dev/stdin}"
 SHEF_RUNTIME_PATH="${SHEF_RUNTIME_PATH:-/run/user/$(id -u)/shef}" || exit 1
 SHEF_INCLUDE_PATH="${SHEF_INCLUDE_PATH:-/usr/local/lib/shef}"
@@ -12,59 +13,52 @@ SHEF_REMOTE_RUNNER="${SHEF_REMOTE_RUNNER:-ssh -T ${SHEF_REMOTE_USER}@${SHEF_REMO
 NL='
 '
 
-# Ensure that `printf` program exists
-printf '' || exit 1
-
-print() {
-	printf '%s' "$1"
-}
-
-println() {
-	printf '%s\n' "$1"
+tr_arg() {
+	tr "$1" "$2" << -EOF || die
+		"$3"
+	EOF
 }
 
 print_usage() {
-	indent="$(print "${PROGRAM}" | tr '[:print:]' ' ')" || exit 1
-	print "Usage:
-		${PROGRAM} --version | -V
-		${PROGRAM} [--include-path=<path> | -I <path>]
-		${indent} [--environment=l[ocal]|t[arget] | -e l[ocal]|t[arget]]
-		${indent} [--] [<task>...]
-"
+	indent="$(tr_arg '[:print:]' ' ' "${PROGRAM}")" || die
+	cat <<- EOF || die 'cannot print usage'
+		Usage:
+		  ${PROGRAM} --version | -V
+		  ${PROGRAM} [--include-path=<path> | -I <path>]
+		  ${indent} [--stdin-runner=<name> | -r <name>]
+		  ${indent} [--] [<task>...]
+	EOF
 }
 
 die() {
 	if [ "$1" = --usage ]; then
-		option="$1" && shift
+		show_usage=yes && shift
 	fi
 
 	if [ $# -gt 0 ]; then
 		format="$1" && shift
 		printf "${PROGRAM}: ${format}\n" "$@" 1>&2
 
-		if [ "${option}" = --usage ]; then
-			println 1>&2
+		if [ "${show_usage}" = yes ]; then
+			echo 1>&2
 		fi
 	fi
 
-	if [ "${option}" = --usage ]; then
+	if [ "${show_usage}" = yes ]; then
 		print_usage 1>&2
 	fi
 
 	exit 1
 }
 
+println() {
+	printf '%s\n' "$1" || die
+}
+
 check_sanity() {
 	LC_ALL=C grep --extended-regexp --quiet "$1" <<- EOF || die "$2: '%s'" "$3"
 		$3
 	EOF
-}
-
-file_has_option() {
-	case "$1" in
-		*.$2.*) return 0 ;;
-		*) return 1 ;;
-	esac
 }
 
 find_task() {
@@ -98,7 +92,7 @@ find_task() {
 search_library() {
 	check_sanity '^[0-9a-z/-]+$' 'bad library name' "$1"
 
-	hash_key="$(print "shef_library_hashC$1" | tr '/-' 'S_')" \
+	hash_key="$(tr_arg '/-' 'S_' "shef_library_hashC$1")" \
 		|| die 'cannot make hash key for the library'
 	eval "hash_value=\"\${${hash_key}}\"" || die
 
@@ -124,8 +118,11 @@ include_libraries() {
 		println "${line}"
 		case "${line#${line%%[![:blank:]]*}}" in
 			\#.*)
-				lib="$(print "${line}" \
-					| sed 's/\(^[[:blank:]]*#\.[[:blank:]]*\|[[:blank:]]*$\)//g')" || die
+				lib="$(
+					sed 's/\(^[[:blank:]]*#\.[[:blank:]]*\|[[:blank:]]*$\)//g' <<- EOF
+						"${line}"
+					EOF
+				)" || die
 
 				search_library "${lib}"
 				if [ -n "${shef_library_path}" ]; then
@@ -141,11 +138,8 @@ include_libraries() {
 
 # TODO: Doc for descriptors
 run_in_environment() {
-	env_upper="$(
-		tr '[:lower:]' '[:upper:]' <<- EOF
-			$1
-		EOF
-	)" || die 'cannot convert environment name to uppercase'
+	env_upper="$(tr_arg '[:lower:]' '[:upper:]' "$1")" \
+		|| die 'cannot convert environment name to uppercase'
 
 	eval "runner=\"\${SHEF_${env_upper}_RUNNER}\"" || die
 	[ -n "${runner}" ] || die "no runner setup for the environment: '$1'"
@@ -164,7 +158,9 @@ run_in_environment() {
 		exec 4<&0 && exec 0<&3 || die
 		include_libraries < "${env_file}"
 		exec 0<&4 && exec 4<&- || die
-	done >&5 &
+	done <<- EOF >&5 &
+		$2
+	EOF
 
 	exec 5>&- || die
 
@@ -197,7 +193,7 @@ cmd_shef() {
 
 	eval set -- "${options}"
 
-	shef_include_path="${INCLUDE_PATH}"
+	shef_include_path="${SHEF_INCLUDE_PATH}"
 
 	while :; do case "$1" in
 		--include-path|-I)
@@ -229,16 +225,12 @@ cmd_shef() {
 			if [ "${prev_env}" = "${shef_env}" ]; then
 				env_files="${env_files}${NL}${file}"
 			else
-				run_in_environment "${prev_env}" <<- EOF
-					${env_files}
-				EOF
+				run_in_environment "${prev_env}" ${env_files}
 				env_files="${file}"
 			fi
 		done
 
-		run_in_environment "${shef_env}" <<- EOF
-			${env_files}
-		EOF
+		run_in_environment "${shef_env}" ${env_files}
 	fi <<- EOF
 		${files}
 	EOF
