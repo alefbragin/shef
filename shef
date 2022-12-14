@@ -14,8 +14,8 @@ NL='
 '
 
 tr_arg() {
-	tr "$1" "$2" << -EOF || die
-		"$3"
+	tr "$1" "$2" <<- EOF || die
+		$3
 	EOF
 }
 
@@ -120,7 +120,7 @@ include_libraries() {
 			\#.*)
 				lib="$(
 					sed 's/\(^[[:blank:]]*#\.[[:blank:]]*\|[[:blank:]]*$\)//g' <<- EOF
-						"${line}"
+						${line}
 					EOF
 				)" || die
 
