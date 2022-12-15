@@ -29,8 +29,9 @@ print_usage() {
 		Usage:
 		  ${PROGRAM} --version | -V
 		  ${PROGRAM} --help
-		  ${PROGRAM} [--include-path=<path> | -I <path>]
+		  ${PROGRAM} [--include-path=<[prefix=]path> | -I <[prefix=]path>]
 		  ${indent} [--stdin-runner=<name> | -r <name>]
+		  ${indent} [--remove-clashed-fifo]
 		  ${indent} [--] [<task>...]
 	EOF
 }
@@ -217,6 +218,7 @@ cmd_shef() {
 	options="$(getopt \
 		--options I:r: \
 		--longoptions include-path:,stdin-runner: \
+		--longoptions remove-clashed-fifo,no-remove-clashed-fifo \
 		-- "$@")" || die --usage
 
 	eval set -- "${options}"
@@ -225,22 +227,20 @@ cmd_shef() {
 
 	while :; do case "$1" in
 		--include-path|-I)
-			shef_include_path="$2:${shef_include_path}"
-			shift 2
+			shef_include_path="$2:${shef_include_path}" && shift 2
 		;;
 		--stdin-runner|-r)
 			check_sanity '^[0-9a-z-]+$' 'bad runner name' "$2"
-			shef_stdin_runner="$2"
-			shift 2
+			shef_stdin_runner="$2" && shift 2
 		;;
 		--remove-clashed-fifo)
-			check_sanity '^(yes|no|)$' "bad value for '$1' option" "$2"
-			shef_remove_clashed_fifo="${2:-yes}"
-			shift 2
+			shef_remove_clashed_fifo=yes && shift
+		;;
+		--no-remove-clashed-fifo)
+			shef_remove_clashed_fifo=no && shift
 		;;
 		--)
-			shift
-			break
+			shift && break
 		;;
 	esac done
 
