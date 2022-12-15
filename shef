@@ -13,14 +13,17 @@ SHEF_REMOTE_RUNNER="${SHEF_REMOTE_RUNNER:-ssh -T ${SHEF_REMOTE_USER}@${SHEF_REMO
 NL='
 '
 
+ERROR_CLOSE_FD='cannot close file descriptor: %s'
+
 tr_arg() {
-	tr "$1" "$2" <<- EOF || die
+	tr "$1" "$2" <<- EOF
 		$3
 	EOF
 }
 
 print_usage() {
-	indent="$(tr_arg '[:print:]' ' ' "${PROGRAM}")" || die
+	indent="$(tr_arg '[:print:]' ' ' "${PROGRAM}")" \
+		|| die 'cannot make indentation for synopsis'
 	cat <<- EOF || die 'cannot print usage'
 		Usage:
 		  ${PROGRAM} --version | -V
@@ -38,7 +41,7 @@ die() {
 
 	if [ $# -gt 0 ]; then
 		format="$1" && shift
-		printf "${PROGRAM}: ${format}\n" "$@" 1>&2
+		printf "${PROGRAM}: ${format}\n" "$@" 1>&2 || exit 1
 	fi
 
 	if [ "${show_usage}" = yes ]; then
@@ -47,10 +50,6 @@ die() {
 	fi
 
 	exit 1
-}
-
-println() {
-	printf '%s\n' "$1" || die
 }
 
 check_sanity() {
@@ -62,13 +61,13 @@ check_sanity() {
 find_task() {
 	for task; do
 		if [ "${task}" = - ]; then
-			println "${SHEF_STDIN_PATH}"
+			printf '%s\n' "${SHEF_STDIN_PATH}" || die 'cannot print STDIN path'
 		else
-			find_result="$(find "${task}" -type f -name '*.sh')" \
-				|| die "cannot find for the task path: '${task}'"
-			[ -n "${find_result}" ] || die "there are no task files in the path: '${task_path}'"
-			LC_ALL=C sort <<- EOF || die
-				${find_result}
+			task_files="$(find "${task}" -type f -name '*.sh')" \
+				|| die "cannot find task files for the path: '${task}'"
+			[ -n "${task_files}" ] || die "there are no task files in the path: '${task_path}'"
+			LC_ALL=C sort <<- EOF || die 'cannot sort task files'
+				${task_files}
 			EOF
 		fi
 	done
@@ -92,7 +91,8 @@ search_library() {
 
 	hash_key="$(tr_arg '/-' 'S_' "shef_library_hashC$1")" \
 		|| die 'cannot make hash key for the library'
-	eval "hash_value=\"\${${hash_key}}\"" || die
+	eval "hash_value=\"\${${hash_key}}\"" \
+		|| die "cannot take value for the key: '${hash_key}'"
 
 	if [ "${hash_value}" = found ]; then
 		shef_library_path=
@@ -103,7 +103,8 @@ search_library() {
 	for path in "${shef_include_path}"; do
 		shef_library_path="${path}/$1.sh"
 		if [ -f "${shef_library_path}" ]; then
-			eval "${hash_key}=found" || die
+			eval "${hash_key}=found" \
+				|| die "cannot assign value for the key: '${hash_key}'"
 			return 0
 		fi
 	done
@@ -113,14 +114,14 @@ search_library() {
 
 include_libraries() {
 	while IFS= read -r line; do
-		println "${line}"
+		printf '%s\n' "${line}" || die 'cannot print the line to the task'
 		case "${line#${line%%[![:blank:]]*}}" in
 			\#.*)
 				lib="$(
 					sed 's/\(^[[:blank:]]*#\.[[:blank:]]*\|[[:blank:]]*$\)//g' <<- EOF
 						${line}
 					EOF
-				)" || die
+				)" || die "cannot extract library name from line: '${line}'"
 
 				search_library "${lib}"
 				if [ -n "${shef_library_path}" ]; then
@@ -139,7 +140,8 @@ run() {
 	runner_uppercase_name="$(tr_arg '[:lower:]' '[:upper:]' "$1")" \
 		|| die 'cannot convert runner name to uppercase'
 
-	eval "runner=\"\${SHEF_${runner_uppercase_name}_RUNNER}\"" || die
+	eval "runner=\"\${SHEF_${runner_uppercase_name}_RUNNER}\"" \
+		|| die "cannot assign to the runner variable for: '$1'"
 	[ -n "${runner}" ] || die "no runner setup for this name: '$1'"
 
 	if [ ! -d "${SHEF_RUNTIME_PATH}" ]; then
@@ -150,28 +152,32 @@ run() {
 	fifo="${SHEF_RUNTIME_PATH}/$$.$1.fifo"
 	# TODO: Remove clashed old FIFO-file optionaly
 	mkfifo "${fifo}" || die "cannot create temporary FIFO: '${fifo}'"
-	exec 5<>"${fifo}" 6<"${fifo}" || die
+	exec 5<>"${fifo}" 6<"${fifo}" \
+		|| die "cannot open file descriptors for FIFO: '${fifo}'"
 	rm "${fifo}" || die "cannot remove temporary FIFO: '${fifo}'"
 
-	while IFS= read -r run_file; do
-		exec 4<&0 0<&3 || die
-		include_libraries < "${run_file}"
-		exec 0<&4 4<&- || die
-	done <<- EOF >&5 &
-		$2
-	EOF
+	{
+		while IFS= read -r run_file; do
+			exec 4<&0 0<&3 || die 'cannot reassign file descriptors: 0, 3'
+			include_libraries < "${run_file}"
+			exec 0<&4 4<&- || die 'cannot reassign file descriptor 4 and close its'
+		done <<- EOF >&5 || die 'cannot output tasks content to the pipe'
+			$2
+		EOF
+	} &
 
-	exec 5>&- || die
+	exec 5>&- || die "${ERROR_CLOSE_FD}" 5
 
 	${runner} <&6 || die "cannot run task file with runner: '${runner}'"
-	exec 6<&- || die
+	exec 6<&- || die "${ERROR_CLOSE_FD}" 6
 
 	wait $! || die 'subprocess for task preprocession fails'
 }
 
 file_runner() {
 	if [ "$1" = "${SHEF_STDIN_PATH}" ]; then
-		[ -n "${shef_stdin_runner}" ] || die 'no runner specified for the task from STDIN'
+		[ -n "${shef_stdin_runner}" ] \
+			|| die 'no runner specified for the task from STDIN'
 		shef_runner="${shef_stdin_runner}"
 	else
 		shef_runner="${1%.sh}"
@@ -181,7 +187,7 @@ file_runner() {
 
 cmd_print_version() {
 	[ $# -eq 0 ] || die --usage "extra argument: '%s'" "$@"
-	printf 'shef version %s\n' "${VERSION}"
+	printf 'shef version %s\n' "${VERSION}" || die 'cannot print Shef version'
 }
 
 cmd_shef() {
@@ -212,7 +218,7 @@ cmd_shef() {
 
 	task_files="$(find_task "${@:--}")" || die
 
-	exec 3<&0
+	exec 3<&0 || die 'cannot open file descriptor 3 for: 0'
 	if IFS= read -r task_file; then
 		file_runner "${task_file}"
 		run_files="${task_file}"
@@ -230,10 +236,10 @@ cmd_shef() {
 		done
 
 		run "${shef_runner}" "${run_files}"
-	fi <<- EOF
+	fi <<- EOF || die 'cannot process task files'
 		${task_files}
 	EOF
-	exec 3<&-
+	exec 3<&- || die "${ERROR_CLOSE_FD}" 3
 }
 
 case "$1" in
