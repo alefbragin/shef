@@ -15,14 +15,15 @@ NL='
 
 ERROR_CLOSE_FD='cannot close file descriptor: %s'
 
-tr_arg() {
-	tr "$1" "$2" <<- EOF
-		$3
+stdin_arg() {
+	arg="$1" && shift
+	"$@" <<- EOF
+		${arg}
 	EOF
 }
 
 print_usage() {
-	indent="$(tr_arg '[:print:]' ' ' "${PROGRAM}")" \
+	indent="$(stdin_arg "${PROGRAM}" tr '[:print:]' ' ')" \
 		|| die 'cannot make indentation for synopsis'
 	cat <<- EOF || die 'cannot print usage'
 		Usage:
@@ -53,9 +54,8 @@ die() {
 }
 
 check_sanity() {
-	LC_ALL=C grep --extended-regexp --quiet "$1" <<- EOF || die "$2: '%s'" "$3"
-		$3
-	EOF
+	LC_ALL=C stdin_arg "$3" grep --extended-regexp --quiet "$1" \
+		|| die "$2: '%s'" "$3"
 }
 
 find_task() {
@@ -66,9 +66,7 @@ find_task() {
 			task_files="$(find "${task}" -type f -name '*.sh')" \
 				|| die "cannot find task files for the path: '${task}'"
 			[ -n "${task_files}" ] || die "there are no task files in the path: '${task_path}'"
-			LC_ALL=C sort <<- EOF || die 'cannot sort task files'
-				${task_files}
-			EOF
+			LC_ALL=C stdin_arg "${task_files}" sort || die 'cannot sort task files'
 		fi
 	done
 }
@@ -89,7 +87,7 @@ find_task() {
 search_library() {
 	check_sanity '^[0-9a-z/-]+$' 'bad library name' "$1"
 
-	hash_key="$(tr_arg '/-' 'S_' "shef_library_hashC$1")" \
+	hash_key="$(stdin_arg "shef_library_hashC$1" tr '/-' 'S_')" \
 		|| die 'cannot make hash key for the library'
 	eval "hash_value=\"\${${hash_key}}\"" \
 		|| die "cannot take value for the key: '${hash_key}'"
@@ -117,11 +115,8 @@ include_libraries() {
 		printf '%s\n' "${line}" || die 'cannot print the line to the task'
 		case "${line#${line%%[![:blank:]]*}}" in
 			\#.*)
-				lib="$(
-					sed 's/\(^[[:blank:]]*#\.[[:blank:]]*\|[[:blank:]]*$\)//g' <<- EOF
-						${line}
-					EOF
-				)" || die "cannot extract library name from line: '${line}'"
+				lib="$(stdin_arg "${line}" sed 's/\(^[[:blank:]]*#\.[[:blank:]]*\|[[:blank:]]*$\)//g')" \
+					|| die "cannot extract library name from line: '${line}'"
 
 				search_library "${lib}"
 				if [ -n "${shef_library_path}" ]; then
@@ -137,7 +132,7 @@ include_libraries() {
 
 # TODO: Doc for file descriptors
 run() {
-	runner_uppercase_name="$(tr_arg '[:lower:]' '[:upper:]' "$1")" \
+	runner_uppercase_name="$(stdin_arg "$1" tr '[:lower:]' '[:upper:]')" \
 		|| die 'cannot convert runner name to uppercase'
 
 	eval "runner=\"\${SHEF_${runner_uppercase_name}_RUNNER}\"" \
