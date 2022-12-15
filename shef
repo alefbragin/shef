@@ -29,7 +29,7 @@ print_usage() {
 		Usage:
 		  ${PROGRAM} --version | -V
 		  ${PROGRAM} --help
-		  ${PROGRAM} [--include-path=<[prefix=]path> | -I <[prefix=]path>]
+		  ${PROGRAM} [--include-path=<prefix=path[:prefix=path...]> | -I <prefix=path[:prefix=path...]>]
 		  ${indent} [--stdin-runner=<name> | -r <name>]
 		  ${indent} [--remove-clashed-fifo]
 		  ${indent} [--] [<task>...]
@@ -104,8 +104,9 @@ search_library() {
 	fi
 
 	IFS=:
-	for path in "${shef_include_path}"; do
-		shef_library_path="${path}/$1.sh"
+	for prefix_path in "${shef_include_path}"; do
+		prefix="${prefix_path%%=*}"
+		shef_library_path="${prefix_path#${prefix}=}/${1#${prefix}/}.sh"
 		if [ -f "${shef_library_path}" ]; then
 			eval "${hash_key}=found" \
 				|| die "cannot assign value for the key: '${hash_key}'"
