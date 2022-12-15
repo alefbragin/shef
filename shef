@@ -71,15 +71,20 @@ find_task() {
 	done
 }
 
-# TODO: Doc about hash per runner env
 ##
-# Search library by name and print it real path. If the library has already been found
-# in a previous function call, the resulting real path will be empty.
+# Search library by name and print it real path.
+#
+# If the library has already been found in a previous function call, the resulting
+# real path will be empty. Note that found libraries are stored in the variable
+# local to (sub)shell; this works as appropriate when this function is called
+# in subshell associated with a runner.
 #
 # Arguments:
 #	$1 Library name
+#
 # Globals:
 #	$shef_library_path Resulting real path or empty string
+#
 # Dies if:
 #	- bad library name
 #	- cannot find library
@@ -130,14 +135,33 @@ include_libraries() {
 	cat
 }
 
-# TODO: Doc for file descriptors
+##
+# Run task files by the runner.
+#
+# Arguments:
+#	$1 Runner name.
+#	$2 List of task files, each one on a separate line.
+#
+# Globals:
+#	$SHEF_RUNTIME_PATH Path to create temporary FIFO.
+#	$SHEF_*_RUNNER Command for substituted (instead of '*') runner.
+#	               E.g. 'SHEF_LOCAL_RUNNER'.
+#	$shef_remove_clashed_fifo If 'yes' remove file that clashed with temporary
+#	                          FIFO file name.
+#	&3 Expect file descriptor to be assigned to STDIN.
+#
+# Dies if:
+#	- no runner command setup for the runner name
+#	- subprocess for task preprocession fails
+#	- runner command error
+##
 run() {
 	runner_uppercase_name="$(stdin_arg "$1" tr '[:lower:]' '[:upper:]')" \
 		|| die 'cannot convert runner name to uppercase'
 
 	eval "runner=\"\${SHEF_${runner_uppercase_name}_RUNNER}\"" \
 		|| die "cannot assign to the runner variable for: '$1'"
-	[ -n "${runner}" ] || die "no runner setup for this name: '$1'"
+	[ -n "${runner}" ] || die "no runner command setup for this name: '$1'"
 
 	if [ ! -d "${SHEF_RUNTIME_PATH}" ]; then
 		mkdir --parent "${SHEF_RUNTIME_PATH}" \
@@ -153,7 +177,7 @@ run() {
 	mkfifo "${fifo}" || die "cannot create temporary FIFO: '${fifo}'"
 	exec 5<>"${fifo}" 6<"${fifo}" \
 		|| die "cannot open file descriptors for FIFO: '${fifo}'"
-	rm "${fifo}" || die "cannot remove temporary FIFO: '${fifo}'"
+	rm "${fifo}" || die "cannot remove clashed file: '${fifo}'"
 
 	{
 		while IFS= read -r run_file; do
