@@ -5,7 +5,7 @@ VERSION=0.0.0
 
 SHEF_STDIN_PATH="${SHEF_STDIN_PATH:-/dev/stdin}"
 SHEF_RUNTIME_PATH="${SHEF_RUNTIME_PATH:-/run/user/$(id -u)/shef}" || exit 1
-SHEF_INCLUDE_PATH="${SHEF_INCLUDE_PATH:-/usr/local/lib/shef}"
+SHEF_INCLUDE_PATH="${SHEF_INCLUDE_PATH:-shef=/usr/local/lib/shef}"
 
 SHEF_LOCAL_RUNNER="${SHEF_LOCAL_RUNNER:-sh}"
 SHEF_REMOTE_RUNNER="${SHEF_REMOTE_RUNNER:-ssh -T ${SHEF_REMOTE_USER}@${SHEF_REMOTE_HOST} -- sh}"
@@ -103,10 +103,20 @@ search_library() {
 		return 0
 	fi
 
-	IFS=:
-	for prefix_path in "${shef_include_path}"; do
+	include_paths="${shef_include_path}"
+	while [ -n "${include_paths}" ]; do
+		case "${include_paths}" in
+			*:*)
+				prefix_path="${include_paths%%:*}"
+				include_paths="${include_paths#*:}"
+			;;
+			*)
+				prefix_path="${include_paths}"
+				include_paths=
+			;;
+		esac
 		prefix="${prefix_path%%=*}"
-		shef_library_path="${prefix_path#${prefix}=}/${1#${prefix}/}.sh"
+		shef_library_path="${prefix_path#${prefix}=}/${1#${prefix}}.sh"
 		if [ -f "${shef_library_path}" ]; then
 			eval "${hash_key}=found" \
 				|| die "cannot assign value for the key: '${hash_key}'"
@@ -215,6 +225,11 @@ cmd_print_version() {
 	printf 'shef version %s\n' "${VERSION}" || die 'cannot print Shef version'
 }
 
+check_included_path_sanity() {
+	check_sanity '^[0-9a-z/-]*=[^:]+(:[0-9a-z/-]*=[^:]+)*$' \
+		'incorrect format for included path with prefix' "$1"
+}
+
 cmd_shef() {
 	options="$(getopt \
 		--options I:r: \
@@ -224,10 +239,12 @@ cmd_shef() {
 
 	eval set -- "${options}"
 
+	check_included_path_sanity "${SHEF_INCLUDE_PATH}"
 	shef_include_path="${SHEF_INCLUDE_PATH}"
 
 	while :; do case "$1" in
 		--include-path|-I)
+			check_included_path_sanity "$2"
 			shef_include_path="$2:${shef_include_path}" && shift 2
 		;;
 		--stdin-runner|-r)
