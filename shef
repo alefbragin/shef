@@ -81,14 +81,14 @@ find_task() {
 # in subshell associated with a runner.
 #
 # Arguments:
-#	$1 Library name
+#   $1 Library name
 #
 # Globals:
-#	$shef_library_path Resulting real path or empty string
+#   $shef_library_path Resulting real path or empty string
 #
 # Dies if:
-#	- bad library name
-#	- cannot find library
+#   - bad library name
+#   - cannot find library
 ##
 search_library() {
 	check_sanity '^[0-9a-z/-]+$' 'bad library name' "$1"
@@ -151,21 +151,21 @@ include_libraries() {
 # Run task files by the runner.
 #
 # Arguments:
-#	$1 Runner name.
-#	$2 List of task files, each one on a separate line.
+#   $1 Runner name.
+#   $2 List of task files, each one on a separate line.
 #
 # Globals:
-#	$SHEF_RUNTIME_PATH Path to create temporary FIFO.
-#	$SHEF_*_RUNNER Command for substituted (instead of '*') runner.
-#	               E.g. 'SHEF_LOCAL_RUNNER'.
-#	$shef_remove_clashed_fifo If 'yes' remove file that clashed with temporary
-#	                          FIFO file name.
-#	&3 Expect file descriptor to be assigned to STDIN.
+#   $SHEF_RUNTIME_PATH Path to create temporary FIFO.
+#   $SHEF_*_RUNNER Command for substituted (instead of '*') runner.
+#                  E.g. 'SHEF_LOCAL_RUNNER'.
+#   $shef_remove_clashed_fifo If 'yes' remove file that clashed with temporary
+#                             FIFO file name.
+#   &3 Expect file descriptor to be assigned to STDIN.
 #
 # Dies if:
-#	- no runner command setup for the runner name
-#	- subprocess for task preprocession fails
-#	- runner command error
+#   - no runner command setup for the runner name
+#   - subprocess for task preprocession fails
+#   - runner command error
 ##
 run() {
 	runner_uppercase_name="$(stdin_arg "$1" tr '[:lower:]' '[:upper:]')" \
