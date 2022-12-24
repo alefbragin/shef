@@ -31,7 +31,7 @@ print_usage() {
 		  ${PROGRAM} --help
 		  ${PROGRAM} [--include-path=<prefix=path[:prefix=path...]> | -I <prefix=path[:prefix=path...]>]
 		  ${indent} [--stdin-runner=<name> | -r <name>]
-		  ${indent} [--remove-clashed-fifo]
+		  ${indent} [--[no-]remove-clashed-fifo]
 		  ${indent} [--] [<task>...]
 	EOF
 }
