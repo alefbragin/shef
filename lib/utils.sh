@@ -1,17 +1,17 @@
 # Miscellaneous helper functions
 
 ##
-# Pass argument to STDIN of specified command
+# Pass argument to STDIN of specified command.
 #
 # Arguments:
-#   $1 Argument to be passed to STDIN of command
-#   $@ Command with its own arguments
+#   $1 Argument to be passed to STDIN of command.
+#   $@ Command with its own arguments.
 #
 # Outputs:
-#   Same as the command outputs
+#   STDERR|STDOUT Same as the command outputs.
 #
 # Dies if:
-#   - command dies (thus doesn't die for extranal program)
+#   - command dies (thus doesn't die for extranal program).
 ##
 stdin_arg() {
 	arg="$1" && shift
@@ -21,16 +21,16 @@ stdin_arg() {
 }
 
 ##
-# Exit shell or subshell with code 1 and print optional error message
+# Exit shell or subshell with code 1 and print optional error message.
 #
 # Arguments:
-#   $1 Optional error message
+#   $1 Optional error message.
 #
 # Outputs:
-#   STDERR Optional error message with '!!! ' prefix
+#   STDERR Optional error message with '!!! ' prefix.
 #
 # Dies:
-#   - always
+#   - always.
 ##
 die() {
 	if [ $# -gt 0 ]; then
@@ -39,4 +39,21 @@ die() {
 	fi
 
 	exit 1
+}
+
+##
+# Put a string in a shell-quoted form.
+#
+# Arguments:
+#   $1 String to be quoted.
+#
+# Outputs:
+#   STDOUT Quoted string.
+#
+# Dies:
+#   - never.
+##
+quote() {
+	stdin_arg "$1" sed "s/'/'\\\\''/g;1s/^/'/;\$s/\$/'/" \
+		|| die "cannot quote string: '$1'"
 }
