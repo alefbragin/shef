@@ -1,4 +1,8 @@
-# Miscellaneous helper functions
+# Miscellaneous helpers.
+
+# Newline character.
+SHEF_NL='
+'
 
 ##
 # Pass argument to STDIN of specified command.
@@ -35,7 +39,7 @@ stdin_arg() {
 die() {
 	if [ $# -gt 0 ]; then
 		format="$1" && shift
-		printf "!!! ${format}\n" "$@" 1>&2 || exit 1
+		printf "${SHEF_RUNNER:+${SHEF_RUNNER}: }!!! ${format}\n" "$@" 1>&2 || exit 1
 	fi
 
 	exit 1

@@ -81,21 +81,21 @@ find_task() {
 # in subshell associated with a runner.
 #
 # Arguments:
-#   $1 Library name
+#   $1 Library name.
 #
 # Globals:
-#   $shef_library_path Resulting real path or empty string
+#   $shef_library_path Resulting real path or empty string.
 #
 # Dies if:
-#   - bad library name
-#   - cannot find library
+#   - bad library name;
+#   - cannot find library.
 ##
 search_library() {
 	check_sanity '^[0-9a-z/-]+$' 'bad library name' "$1"
 
 	hash_key="$(stdin_arg "shef_library_hashC$1" tr '/-' 'S_')" \
 		|| die 'cannot make hash key for the library'
-	eval "hash_value=\"\${${hash_key}}\"" \
+	eval "hash_value=\${${hash_key}}" \
 		|| die "cannot take value for the key: '${hash_key}'"
 
 	if [ "${hash_value}" = found ]; then
@@ -151,7 +151,7 @@ include_libraries() {
 # Run task files by the runner.
 #
 # Arguments:
-#   $1 Runner name.
+#   $1 Runner name. The name must be sanity.
 #   $2 List of task files, each one on a separate line.
 #
 # Globals:
@@ -163,15 +163,15 @@ include_libraries() {
 #   &3 Expect file descriptor to be assigned to STDIN.
 #
 # Dies if:
-#   - no runner command setup for the runner name
-#   - subprocess for task preprocession fails
-#   - runner command error
+#   - no runner command setup for the runner name;
+#   - subprocess for task preprocession fails;
+#   - runner command error.
 ##
 run() {
 	runner_uppercase_name="$(stdin_arg "$1" tr '[:lower:]' '[:upper:]')" \
 		|| die 'cannot convert runner name to uppercase'
 
-	eval "runner=\"\${SHEF_${runner_uppercase_name}_RUNNER}\"" \
+	eval "runner=\${SHEF_${runner_uppercase_name}_RUNNER}" \
 		|| die "cannot assign to the runner variable for: '$1'"
 	[ -n "${runner}" ] || die "no runner command setup for this name: '$1'"
 
@@ -203,7 +203,7 @@ run() {
 
 	exec 5>&- || die "${ERROR_CLOSE_FD}" 5
 
-	${runner} <&6 || die "cannot run task file with runner: '${runner}'"
+	SHEF_RUNNER="$1" ${runner} <&6 || die "cannot run task file with runner: '${runner}'"
 	exec 6<&- || die "${ERROR_CLOSE_FD}" 6
 
 	wait $! || die 'subprocess for task preprocession fails'
@@ -218,6 +218,8 @@ file_runner() {
 		shef_runner="${1%.sh}"
 		shef_runner="${shef_runner##*[/.]}"
 	fi
+
+	check_runner_sanity "${shef_runner}"
 }
 
 cmd_print_version() {
@@ -228,6 +230,10 @@ cmd_print_version() {
 check_included_path_sanity() {
 	check_sanity '^[0-9a-z/-]*=[^:]+(:[0-9a-z/-]*=[^:]+)*$' \
 		'incorrect format for included path with prefix' "$1"
+}
+
+check_runner_sanity() {
+	check_sanity '^[0-9a-z-]+$' 'bad runner name' "$2"
 }
 
 cmd_shef() {
@@ -248,7 +254,7 @@ cmd_shef() {
 			shef_include_path="$2:${shef_include_path}" && shift 2
 		;;
 		--stdin-runner|-r)
-			check_sanity '^[0-9a-z-]+$' 'bad runner name' "$2"
+			check_runner_sanity "$2"
 			shef_stdin_runner="$2" && shift 2
 		;;
 		--remove-clashed-fifo)
