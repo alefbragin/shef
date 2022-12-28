@@ -38,8 +38,7 @@ stdin_arg() {
 ##
 die() {
 	if [ $# -gt 0 ]; then
-		format="$1" && shift
-		printf "${SHEF_RUNNER:+${SHEF_RUNNER}: }!!! ${format}\n" "$@" 1>&2 || exit 1
+		echo "${SHEF_RUNNER:+${SHEF_RUNNER}: }!!! $1" 1>&2 || exit 1
 	fi
 
 	exit 1
@@ -60,4 +59,25 @@ die() {
 quote() {
 	stdin_arg "$1" sed "s/'/'\\\\''/g;1s/^/'/;\$s/\$/'/" \
 		|| die "cannot quote string: '$1'"
+}
+
+eval_assign() {
+	eval "$1=$2" || die "cannot eval assign: '$1' <- '$2'"
+}
+
+eval_quote_assign() {
+	quoted_value="$(quote "$2")" || die
+	eval_assign "$1" "${quoted_value}"
+}
+
+read_all() {
+  eval "$1=\$(cat)" || die 'cannot read with cat'
+}
+
+print() {
+  printf '%s' "$1" || die 'cannot print with printf'
+}
+
+print_line() {
+  printf '%s\n' "$1" || die 'cannot print with printf'
 }

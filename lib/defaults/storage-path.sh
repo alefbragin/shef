@@ -1,0 +1,1 @@
+SHEF_STORAGE_PATH="${SHEF_STORAGE_PATH:-/var/shef}"
