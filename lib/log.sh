@@ -17,8 +17,8 @@
 ##
 log_caption() {
 	mainline="# $1 #"
-	border="$(stdin_arg "${mainline}" tr '[:print:]' '#')" || die 'cannot make caption border'
-	cat <<- EOF 1>&2 || die 'cannot print caption'
+	border="$(stdin_arg "${mainline}" tr '[:print:]' '#')" || die 'make caption border'
+	cat <<- EOF 1>&2 || die 'print caption'
 
 		${SHEF_RUNNER:+${SHEF_RUNNER}:${SHEF_NL}}
 		${border}

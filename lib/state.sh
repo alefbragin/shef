@@ -7,7 +7,7 @@
 
 state_file() {
 	file_name="$(stdin_arg "$1" tr _ -)" \
-		|| die "cannot make state file name from: '$1'"
+		|| die "make state file name from: '$1'"
 	print_line "${SHEF_STORAGE_PATH}/state/${file_name}"
 }
 
@@ -70,7 +70,7 @@ state() {
 		file="$(state_file "$1")" || die
 		if [ -f "${file}" ]; then
 			read_all "${value}" < "${file}" \
-				|| die "cannot read state value from file: '${file}'"
+				|| die "read state value from file: '${file}'"
 
 			eval_quote_assign "${var_name}" "${value}"
 		fi

@@ -28,17 +28,17 @@ stdin_arg() {
 # Exit shell or subshell with code 1 and print optional error message.
 #
 # Arguments:
-#   $1 Optional error message.
+#   $1 Optional reason. The reason will be prefixed with 'cannot ' string.
 #
 # Outputs:
-#   STDERR Optional error message with '!!! ' prefix.
+#   STDERR Optional error message with runner name and '!!! ' prefix.
 #
 # Dies:
 #   - always.
 ##
 die() {
 	if [ $# -gt 0 ]; then
-		echo "${SHEF_RUNNER:+${SHEF_RUNNER}: }!!! $1" 1>&2 || exit 1
+		echo "${SHEF_RUNNER:+${SHEF_RUNNER}: }!!! cannot $1" 1>&2 || exit 1
 	fi
 
 	exit 1
@@ -58,11 +58,11 @@ die() {
 ##
 quote() {
 	stdin_arg "$1" sed "s/'/'\\\\''/g;1s/^/'/;\$s/\$/'/" \
-		|| die "cannot quote string: '$1'"
+		|| die "quote string: '$1'"
 }
 
 eval_assign() {
-	eval "$1=$2" || die "cannot eval assign: '$1' <- '$2'"
+	eval "$1=$2" || die "eval assign: '$1' <- '$2'"
 }
 
 eval_quote_assign() {
@@ -71,13 +71,13 @@ eval_quote_assign() {
 }
 
 read_all() {
-	eval "$1=\$(cat)" || die 'cannot read with cat'
+	eval "$1=\$(cat)" || die 'read with cat'
 }
 
 print() {
-	printf '%s' "$1" || die 'cannot print with printf'
+	printf '%s' "$1" || die 'print with printf'
 }
 
 print_line() {
-	printf '%s\n' "$1" || die 'cannot print with printf'
+	printf '%s\n' "$1" || die 'print with printf'
 }

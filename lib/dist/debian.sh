@@ -7,7 +7,7 @@
 dist_install() {
   if ! dpkg-query --show "$1" > /dev/null 2> /dev/null; then
     DEBIAN_FRONTEND=noninteractive apt-get install --yes "$1" \
-      || die "cannot install package: '$1'"
+      || die "install package: '$1'"
 
     log_changed "package was successfully installed: '$1'"
   else
@@ -18,7 +18,7 @@ dist_install() {
 dist_database_update() {
   if [ "$1" = --force ] || state dist_database_needs_update yes; then
     DEBIAN_FRONTEND=noninteractive apt-get update \
-      || die "cannot update packages database"
+      || die "update packages database"
 
     state_set dist_database_needs_update no
 
@@ -33,7 +33,7 @@ dist_initial_upgrade() {
     dist_database_update --force
 
     DEBIAN_FRONTEND=noninteractive apt-get dist-upgrade --yes \
-      || die "cannot upgrade distributive"
+      || die "upgrade distributive"
 
     state_set dist_is_initially_upgraded yes
 

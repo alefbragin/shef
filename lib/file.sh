@@ -4,8 +4,8 @@
 #.  shef/utils
 
 file_ensure_containing_directory() {
-	dir="$(dirname "$1")" || die "cannot extract directory name from the path: '$1'"
-	mkdir --parents "${dir}" || die "cannot create directory: '${dir}'"
+	dir="$(dirname "$1")" || die "extract directory name from the path: '$1'"
+	mkdir --parents "${dir}" || die "create directory: '${dir}'"
 }
 
 file_sync() {
@@ -13,7 +13,7 @@ file_sync() {
 	eval_assign file "\${${1}_file}"
 
 	file_ensure_containing_directory "${file}"
-	print_line "${content}" > "${file}" || die "cannot sync file: '${file}'"
+	print_line "${content}" > "${file}" || die "sync file: '${file}'"
 }
 
 file_changed() {

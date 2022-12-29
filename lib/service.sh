@@ -7,7 +7,7 @@
 
 service_variable_name() {
 	stdin_arg "service_$1" tr - _ \
-		|| die "cannot make service variable name from: '$1'"
+		|| die "make service variable name from: '$1'"
 }
 
 service_set_reload_needness() {
@@ -18,7 +18,7 @@ service_set_reload_needness() {
 service_ensure() {
 	if ! systemctl is-active "$1" > /dev/null; then
 		systemctl start "$1" \
-			|| die "cannot start service: '$1'"
+			|| die "start service: '$1'"
 
 		log_changed "service successfully changed: '$1'"
 	else
@@ -28,7 +28,7 @@ service_ensure() {
 
 		if state "${service_varname}_needs_reload" yes; then
 			systemctl reload "$1" \
-				|| die "cannot reload service: '$1'"
+				|| die "reload service: '$1'"
 
 			state_set "${service_varname}_needs_reload" "$1" no
 
