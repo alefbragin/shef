@@ -71,13 +71,13 @@ eval_quote_assign() {
 }
 
 read_all() {
-  eval "$1=\$(cat)" || die 'cannot read with cat'
+	eval "$1=\$(cat)" || die 'cannot read with cat'
 }
 
 print() {
-  printf '%s' "$1" || die 'cannot print with printf'
+	printf '%s' "$1" || die 'cannot print with printf'
 }
 
 print_line() {
-  printf '%s\n' "$1" || die 'cannot print with printf'
+	printf '%s\n' "$1" || die 'cannot print with printf'
 }
