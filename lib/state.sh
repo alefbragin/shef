@@ -7,10 +7,10 @@
 
 shef__state_file() {
 	shef__state_file__file_name="$(shef__stdin_arg "$1" tr _ -)" \
-		|| die "make state file name from: '$1'"
+		|| shef__die "make state file name from: '$1'"
 	shef__print_line "${SHEF_STORAGE_PATH}/state/${shef__state_file__file_name}"
 }
-state_file=shef__state_file
+shef__fn_alias state_file
 
 ##
 # Set arbitary string as a state: assign it to appropriate variable and write to appropriate file.
@@ -31,7 +31,7 @@ state_file=shef__state_file
 shef__state_set() {
 	shef__eval_quote_assign "shef__states__${1}" "$2"
 
-	shef__state_set__file="$(shef__state_file "$1")" || die
+	shef__state_set__file="$(shef__state_file "$1")" || shef__die
 	# shef__eval_quote_assign "shef__states__${1}_file" "${shef__state_set__file}"
 
 	shef__file_set "shef__states__${1}" "${shef__state_set__file}"
@@ -39,7 +39,7 @@ shef__state_set() {
 		shef__file_sync "shef__states__${1}"
 	fi
 }
-state_set=shef__state_set
+shef__fn_alias state_set
 
 ##
 # Print or test state.
@@ -81,4 +81,4 @@ shef__state() {
 		shef__print "${shef__state__value}"
 	fi
 }
-state=shef__state
+shef__fn_alias state
