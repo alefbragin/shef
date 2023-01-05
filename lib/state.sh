@@ -32,8 +32,6 @@ shef__state_set() {
 	shef__eval_quote_assign "shef__states__${1}" "$2"
 
 	shef__state_set__file="$(shef__state_file "$1")" || shef__die
-	# shef__eval_quote_assign "shef__states__${1}_file" "${shef__state_set__file}"
-
 	shef__file_set "shef__states__${1}" "${shef__state_set__file}"
 	if shef__file_changed "shef__states__${1}"; then
 		shef__file_sync "shef__states__${1}"
