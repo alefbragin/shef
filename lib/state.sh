@@ -5,11 +5,12 @@
 #.  shef/utils
 #.  shef/file
 
-state_file() {
-	file_name="$(stdin_arg "$1" tr _ -)" \
+shef__state_file() {
+	shef__state_file__file_name="$(shef__stdin_arg "$1" tr _ -)" \
 		|| die "make state file name from: '$1'"
-	print_line "${SHEF_STORAGE_PATH}/state/${file_name}"
+	shef__print_line "${SHEF_STORAGE_PATH}/state/${shef__state_file__file_name}"
 }
+state_file=shef__state_file
 
 ##
 # Set arbitary string as a state: assign it to appropriate variable and write to appropriate file.
@@ -18,27 +19,27 @@ state_file() {
 #   $1 State name. The name must be match `[a-z0-9_]+`.
 #
 # Globals:
-#   $shef_state_* State.
-#   $shef_state_*_file Path of a file where state will be stored.
+#   $shef__states__${1} State.
+#   $shef__states__${1}_file Path of a file where state will be stored.
 #
 # Files:
-#   $shef_state_*_file (in/out) File where state is stored.
+#   in/out $(shef__state_file $1) File where state is stored.
 #
 # Dies if:
 #   - cannot read or write state file.
 ##
-state_set() {
-	var_name="shef_state_${1}"
-	eval_quote_assign "${var_name}" "$2"
+shef__state_set() {
+	shef__eval_quote_assign "shef__states__${1}" "$2"
 
-	file_var_name="shef_state_${1}_file"
-	file="$(state_file "$1")" || die
-	eval_quote_assign "${file_var_name}" "${file}"
+	shef__state_set__file="$(shef__state_file "$1")" || die
+	# shef__eval_quote_assign "shef__states__${1}_file" "${shef__state_set__file}"
 
-	if file_changed "${var_name}"; then
-		file_sync "${var_name}"
+	shef__file_set "shef__states__${1}" "${shef__state_set__file}"
+	if shef__file_changed "shef__states__${1}"; then
+		shef__file_sync "shef__states__${1}"
 	fi
 }
+state_set=shef__state_set
 
 ##
 # Print or test state.
@@ -51,34 +52,33 @@ state_set() {
 #   $2 State value to test for equality with actual state.
 #
 # Globals:
-#   $shef_state_* State.
+#   $shef__states__${1} State.
 #
 # Outputs:
 #   STDOUT Print state value if only one argument was passed.
 #
 # Files:
-#   $shef_state_*_file (in/out) File where state is stored.
+#   in/out $(shef__state_file $1) File where state is stored.
 #
 # Dies if:
 #   - cannot read state file.
 ##
-state() {
-	var_name="shef_state_${1}"
+shef__state() {
+	shef__eval_quote shef__state__value "\${shef__states__${1}}"
+	if [ -z "${shef__state__value}" ]; then
+		shef__state__file="$(shef__state_file "$1")" || shef__die
+		if [ -f "${shef__state__file}" ]; then
+			shef__read_all "${shef__state__value}" < "${shef__state__file}" \
+				|| shef__die "read state value from file: '${shef__state__file}'"
 
-	eval_quote value "\${${var_name}}"
-	if [ -z "${value}" ]; then
-		file="$(state_file "$1")" || die
-		if [ -f "${file}" ]; then
-			read_all "${value}" < "${file}" \
-				|| die "read state value from file: '${file}'"
-
-			eval_quote_assign "${var_name}" "${value}"
+			shef__eval_quote_assign "shef__states__${1}" "${shef__state__value}"
 		fi
 	fi
 
 	if [ $# -gt 1 ]; then
-		[ "${value}" = "$2" ]
+		[ "${shef__state__value}" = "$2" ]
 	else
-		print "${value}"
+		shef__print "${shef__state__value}"
 	fi
 }
+state=shef__state

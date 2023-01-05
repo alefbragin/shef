@@ -17,12 +17,13 @@ SHEF_NL='
 # Dies if:
 #   - command dies (thus doesn't die for extranal program).
 ##
-stdin_arg() {
-	arg="$1" && shift
+shef__stdin_arg() {
+	shef__stdin_arg__arg="$1" && shift
 	"$@" <<- EOF
-		${arg}
+		${shef__stdin_arg__arg}
 	EOF
 }
+stdin_arg=shef__stdin_arg
 
 ##
 # Exit shell or subshell with code 1 and print optional error message.
@@ -36,13 +37,14 @@ stdin_arg() {
 # Dies:
 #   - always.
 ##
-die() {
+shef__die() {
 	if [ $# -gt 0 ]; then
 		echo "${SHEF_RUNNER:+${SHEF_RUNNER}: }!!! cannot $1" 1>&2 || exit 1
 	fi
 
 	exit 1
 }
+die=shef__die
 
 ##
 # Put a string in a shell-quoted form.
@@ -56,28 +58,34 @@ die() {
 # Dies:
 #   - never.
 ##
-quote() {
+shef__quote() {
 	stdin_arg "$1" sed "s/'/'\\\\''/g;1s/^/'/;\$s/\$/'/" \
-		|| die "quote string: '$1'"
+		|| shef__die "quote string: '$1'"
 }
+quote=shef__quote
 
-eval_assign() {
-	eval "$1=$2" || die "eval assign: '$1' <- '$2'"
+shef__eval_assign() {
+	eval "$1=$2" || shef__die "eval assign: $1=$2"
 }
+eval_assign=shef__eval_assign
 
-eval_quote_assign() {
-	quoted_value="$(quote "$2")" || die
-	eval_assign "$1" "${quoted_value}"
+shef__eval_quote_assign() {
+	shef__eval_quote_assign__quoted_value="$(shef__quote "$2")" || shef__die
+	shef__eval_assign "$1" "${shef__eval_quote_assign__quoted_value}"
 }
+eval_quote_assign=shef__eval_quote_assign
 
-read_all() {
-	eval "$1=\$(cat)" || die 'read with cat'
+shef__read_all() {
+	eval "$1=\$(cat)" || shef__die 'read with cat'
 }
+read_all=shef__read_all
 
-print() {
-	printf '%s' "$1" || die 'print with printf'
+shef__print() {
+	printf '%s' "$1" || shef__die 'print with printf'
 }
+print=shef__print
 
-print_line() {
-	printf '%s\n' "$1" || die 'print with printf'
+shef__print_line() {
+	printf '%s\n' "$1" || shef__die 'print with printf'
 }
+print_line=shef__print_line
