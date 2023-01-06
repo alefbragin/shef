@@ -1,25 +1,21 @@
 # Miscellaneous helpers.
+#
+# Dependency:
+#.  shef/fn-alias
+
+shef__function_aliases \
+	stdin_arg \
+	die \
+	quote \
+	eval_assign \
+	eval_quote_assign \
+	read_all \
+	print \
+	print_line
 
 # Newline character.
 SHEF_NL='
 '
-
-##
-# Make alias of Shef's library function without 'shef__' prefix.
-#
-# Arguments:
-#   $1 Name of the alias.
-#
-# Globals:
-#   $shef__$1 Aliased function.
-#   $1 Function that is alias.
-#
-# Dies:
-#   - never.
-##
-shef__fn_alias() {
-	eval "$1(){ shef__$1 \"\$@\";}"
-}
 
 ##
 # Pass argument to STDIN of specified command.
@@ -40,7 +36,6 @@ shef__stdin_arg() {
 		${shef__stdin_arg__arg}
 	EOF
 }
-shef__fn_alias stdin_arg
 
 ##
 # Exit shell or subshell with code 1 and print optional error message.
@@ -61,7 +56,6 @@ shef__die() {
 
 	exit 1
 }
-shef__fn_alias die
 
 ##
 # Put a string in a shell-quoted form.
@@ -79,30 +73,24 @@ shef__quote() {
 	stdin_arg "$1" sed "s/'/'\\\\''/g;1s/^/'/;\$s/\$/'/" \
 		|| shef__die "quote string: '$1'"
 }
-shef__fn_alias quote
 
 shef__eval_assign() {
 	eval "$1=$2" || shef__die "eval assign: $1=$2"
 }
-shef__fn_alias eval_assign
 
 shef__eval_quote_assign() {
 	shef__eval_quote_assign__quoted_value="$(shef__quote "$2")" || shef__die
 	shef__eval_assign "$1" "${shef__eval_quote_assign__quoted_value}"
 }
-shef__fn_alias eval_quote_assign
 
 shef__read_all() {
 	eval "$1=\$(cat)" || shef__die 'read with cat'
 }
-shef__fn_alias read_all
 
 shef__print() {
 	printf '%s' "$1" || shef__die 'print with printf'
 }
-shef__fn_alias print
 
 shef__print_line() {
 	printf '%s\n' "$1" || shef__die 'print with printf'
 }
-shef__fn_alias print_line
