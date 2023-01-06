@@ -1,16 +1,21 @@
-# Reading/writing Shef state.
+# Reading/writing Shef persistent state.
 #
 # Dependencies:
 #.  shef/defaults/storage-path
+#.  shef/fn-alias
 #.  shef/utils
 #.  shef/file
 
+shef__function_aliases \
+	state_set \
+	state \
+	state_check
+
 shef__state_file() {
-	shef__state_file__file_name="$(shef__stdin_arg "$1" tr _ -)" \
+	shef__state_file__filename="$(shef__stdin_arg "$1" tr _ -)" \
 		|| shef__die "make state file name from: '$1'"
-	shef__print_line "${SHEF_STORAGE_PATH}/state/${shef__state_file__file_name}"
+	shef__print_line "${SHEF_STORAGE_PATH}/state/${shef__state_file__filename}"
 }
-shef__fn_alias state_file
 
 ##
 # Set arbitary string as a state: assign it to appropriate variable and write to appropriate file.
@@ -37,7 +42,6 @@ shef__state_set() {
 		shef__file_sync "shef__states__${1}"
 	fi
 }
-shef__fn_alias state_set
 
 ##
 # Print or test state.
@@ -62,7 +66,7 @@ shef__fn_alias state_set
 #   - cannot read state file.
 ##
 shef__state() {
-	shef__eval_quote shef__state__value "\${shef__states__${1}}"
+	shef__eval_assign shef__state__value "\${shef__states__${1}}"
 	if [ -z "${shef__state__value}" ]; then
 		shef__state__file="$(shef__state_file "$1")" || shef__die
 		if [ -f "${shef__state__file}" ]; then
@@ -79,4 +83,8 @@ shef__state() {
 		shef__print "${shef__state__value}"
 	fi
 }
-shef__fn_alias state
+
+shef__state_check() {
+	shef__state_check__state="$(shef__state "$1")" || shef__die
+	shef__check "${shef__state_check__state}"
+}

@@ -1,7 +1,16 @@
 # Printing log messages.
 #
 # Dependencies:
+#.  shef/fn-alias
 #.  shef/utils
+
+shef__function_aliases \
+	caption \
+	message \
+	changed \
+	already \
+	skipped \
+	info
 
 ##
 # Print fancy caption to STDERR.
@@ -15,15 +24,17 @@
 # Dies if:
 #   - cannot print caption.
 ##
-log_caption() {
-	mainline="# $1 #"
-	border="$(stdin_arg "${mainline}" tr '[:print:]' '#')" || die 'make caption border'
-	cat <<- EOF 1>&2 || die 'print caption'
+shef__log_caption() {
+	shef__log_caption__mainline="# $1 #"
+	shef__log_caption__border="$(shef__stdin_arg "${shef__log_caption__mainline}" \
+		tr '[:print:]' '#')" || shef__die 'make caption border'
+
+	cat <<- EOF 1>&2 || shef__die 'print caption'
 
 		${SHEF_RUNNER:+${SHEF_RUNNER}:${SHEF_NL}}
-		${border}
-		${mainline}
-		${border}
+		${shef__log_caption__border}
+		${shef__log_caption__mainline}
+		${shef__log_caption__border}
 
 	EOF
 }
@@ -41,7 +52,7 @@ log_caption() {
 # Dies if:
 #   - cannot print caption.
 ##
-log_message() {
+shef__log_message() {
 	printf "${SHEF_RUNNER:+${SHEF_RUNNER}: }$2%s\n" "$1" 1>&2 || exit 1
 }
 
@@ -57,8 +68,8 @@ log_message() {
 # Dies if:
 #   - cannot print caption.
 ##
-log_changed() {
-	log_message "$1" '+++ '
+shef__log_changed() {
+	shef__log_message "$1" '+++ '
 }
 
 ##
@@ -73,8 +84,8 @@ log_changed() {
 # Dies if:
 #   - cannot print caption.
 ##
-log_already() {
-	log_message "$1" '=== '
+shef__log_already() {
+	shef__log_message "$1" '=== '
 }
 
 ##
@@ -89,8 +100,8 @@ log_already() {
 # Dies if:
 #   - cannot print caption.
 ##
-log_skipped() {
-	log_message "$1" '~~~ '
+shef__log_skipped() {
+	shef__log_message "$1" '~~~ '
 }
 
 ##
@@ -105,6 +116,6 @@ log_skipped() {
 # Dies if:
 #   - cannot print caption.
 ##
-log_info() {
-	log_message "$1" '### '
+shef__log_info() {
+	shef__log_message "$1" '### '
 }
