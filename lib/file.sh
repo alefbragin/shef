@@ -22,8 +22,8 @@ shef__file_set() {
 }
 
 shef__file_sync() {
-	shef__eval_assign shef__file_sync__content "\${$1}"
-	shef__eval_assign shef__file_sync__file "\${${1}_file}"
+	shef__assign_eval shef__file_sync__content "\${$1}"
+	shef__assign_eval shef__file_sync__file "\${${1}_file}"
 
 	shef__file_ensure_path "${shef__file_sync__file}"
 	shef__print_line "${shef__file_sync__content}" > "${shef__file_sync__file}" \
@@ -31,8 +31,8 @@ shef__file_sync() {
 }
 
 shef__file_changed() {
-	shef__eval_assign shef__file_changed__content "\${$1}"
-	shef__eval_assign shef__file_changed__file "\${${1}_file}"
+	shef__assign_eval shef__file_changed__content "\${$1}"
+	shef__assign_eval shef__file_changed__file "\${${1}_file}"
 
 	if [ ! -f "${shef__file_changed__file}" ]; then
 		return 0

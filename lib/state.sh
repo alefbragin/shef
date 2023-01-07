@@ -66,7 +66,7 @@ shef__state_set() {
 #   - cannot read state file.
 ##
 shef__state() {
-	shef__eval_assign shef__state__value "\${shef__states__${1}}"
+	shef__assign_eval shef__state__value "\${shef__states__${1}}"
 	if [ -z "${shef__state__value}" ]; then
 		shef__state__file="$(shef__state_file "$1")" || shef__die
 		if [ -f "${shef__state__file}" ]; then

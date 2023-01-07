@@ -7,7 +7,7 @@ shef__function_aliases \
 	stdin_arg \
 	die \
 	quote \
-	eval_assign \
+	assign_eval \
 	eval_quote_assign \
 	read_all \
 	print \
@@ -29,7 +29,7 @@ SHEF_NL='
 #   STDERR|STDOUT Same as the command outputs.
 #
 # Dies if:
-#   - command dies (thus doesn't die for extranal program).
+#   - command dies (thus doesn't die for external program).
 ##
 shef__stdin_arg() {
 	shef__stdin_arg__arg="$1" && shift
@@ -75,13 +75,13 @@ shef__quote() {
 		|| shef__die "quote string: '$1'"
 }
 
-shef__eval_assign() {
-	eval "$1=$2" || shef__die "eval assign: $1=$2"
+shef__assign_eval() {
+	eval "$1=$2" || shef__die "assign eval: $1=$2"
 }
 
 shef__eval_quote_assign() {
 	shef__eval_quote_assign__quoted_value="$(shef__quote "$2")" || shef__die
-	shef__eval_assign "$1" "${shef__eval_quote_assign__quoted_value}"
+	shef__assign_eval "$1" "${shef__eval_quote_assign__quoted_value}"
 }
 
 shef__read_all() {
