@@ -71,17 +71,17 @@ shef__die() {
 #   - never.
 ##
 shef__quote() {
-	stdin_arg "$1" sed "s/'/'\\\\''/g;1s/^/'/;\$s/\$/'/" \
+	shef__stdin_arg "$1" sed "s/'/'\\\\''/g;1s/^/'/;\$s/\$/'/" \
 		|| shef__die "quote string: '$1'"
 }
 
-shef__assign_eval() {
-	eval "$1=$2" || shef__die "assign eval: $1=$2"
+shef__indirect_assign() {
+	eval "$1=\${$2}" || shef__die "indirect assign: $1=\${$2}"
 }
 
-shef__eval_quote_assign() {
-	shef__eval_quote_assign__quoted_value="$(shef__quote "$2")" || shef__die
-	shef__assign_eval "$1" "${shef__eval_quote_assign__quoted_value}"
+shef__assign() {
+	shef__assign__quoted="$(shef__quote "$2")" || shef__die
+	eval "$1=${shef__assign__quoted}" || shef__die "assign: $1=$2"
 }
 
 shef__read_all() {

@@ -34,7 +34,7 @@ shef__state_file() {
 #   - cannot read or write state file.
 ##
 shef__state_set() {
-	shef__eval_quote_assign "shef__states__${1}" "$2"
+	shef__assign "shef__states__${1}" "$2"
 
 	shef__state_set__file="$(shef__state_file "$1")" || shef__die
 	shef__file_set "shef__states__${1}" "${shef__state_set__file}"
@@ -66,14 +66,14 @@ shef__state_set() {
 #   - cannot read state file.
 ##
 shef__state() {
-	shef__assign_eval shef__state__value "\${shef__states__${1}}"
+	shef__indirect_assign shef__state__value "shef__states__${1}"
 	if [ -z "${shef__state__value}" ]; then
 		shef__state__file="$(shef__state_file "$1")" || shef__die
 		if [ -f "${shef__state__file}" ]; then
 			shef__read_all "${shef__state__value}" < "${shef__state__file}" \
 				|| shef__die "read state value from file: '${shef__state__file}'"
 
-			shef__eval_quote_assign "shef__states__${1}" "${shef__state__value}"
+			shef__assign "shef__states__${1}" "${shef__state__value}"
 		fi
 	fi
 
