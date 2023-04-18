@@ -1,0 +1,3 @@
+line form inner library
+line from outer library
+line from main
