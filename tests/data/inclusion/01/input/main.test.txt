@@ -1,0 +1,3 @@
+line before inclusion
+#. lib
+line after inclusion

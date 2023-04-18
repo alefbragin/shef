@@ -1,6 +1,6 @@
 PREFIX ?= /usr/local
 
-.PHONY: all install uninstall
+.PHONY: all install uninstall test
 
 all:
 
@@ -15,3 +15,6 @@ install:
 uninstall:
 	rm --force ${PREFIX}/bin/shef
 	rm --force --recursive ${PREFIX}/lib/shef
+
+test:
+	tests/inclusion
