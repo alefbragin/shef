@@ -1,0 +1,4 @@
+#. lib
+#. prefix-1/lib
+#. prefix-2/lib
+main

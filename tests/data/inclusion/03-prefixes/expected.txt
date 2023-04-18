@@ -1,0 +1,4 @@
+library without prefix
+prefix-1 library
+prefix-2 library
+main
