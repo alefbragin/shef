@@ -1,0 +1,2 @@
+#. self
+/opt-2/self
