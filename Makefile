@@ -17,4 +17,4 @@ uninstall:
 	rm --force --recursive ${DESTDIR}${PREFIX}/lib/shef
 
 test:
-	tests/inclusion
+	tests/inclusion/test

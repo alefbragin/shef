@@ -17,7 +17,7 @@ for data in "${data_prefix}/"*; do
 
     mkdir --parents "${run}" || fail
 
-    shef --include-path="${data}/input/include" "${data}/input/main.test.txt" \
+    shef --include-path="${data}/input/include" "${data}/input/main.txt" \
         > "${run}/actual.txt" || fail
 
     diff "${data}/expected.txt" "${run}/actual.txt" || fail
