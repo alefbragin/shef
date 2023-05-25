@@ -13,8 +13,8 @@ install:
 	chmod --recursive 644 ${DESTDIR}${PREFIX}/lib/shef
 
 uninstall:
-	rm --force ${PREFIX}/bin/shef
-	rm --force --recursive ${PREFIX}/lib/shef
+	rm --force ${DESTDIR}${PREFIX}/bin/shef
+	rm --force --recursive ${DESTDIR}${PREFIX}/lib/shef
 
 test:
 	tests/inclusion
