@@ -1,23 +1,30 @@
 #!/bin/bash
 
-dir="${0%/*}"
-run_prefix="${dir}/run"
-data_prefix="${dir}/data"
+TEST_DIR="${0%/*}"
+RUN_PREFIX="${TEST_DIR}/run"
+DATA_PREFIX="${TEST_DIR}/data"
 
 fail() {
+    if [ $# -gt 0 ]; then
+        printf "inclusion test (${DATA_BASENAME}) fails: $1" "$2"
+    fi
+
     exit 1
 }
 
-shef() {
-    SHEF_TEST_TXT_RUNNER=cat "${dir}/../../shef" "$@"
-}
+for DATA_DIR in "${DATA_PREFIX}/"*; do
+    DATA_BASENAME="${DATA_DIR#${DATA_PREFIX}/}"
+    RUN_DIR="${RUN_PREFIX}/${DATA_BASENAME}"
+    mkdir --parents "${RUN_DIR}" || fail 'can not create directory: %s' "${RUN_DIR}"
 
-for data in "${data_prefix}/"*; do
-    run="${run_prefix}${data#${data_prefix}}"
-    mkdir --parents "${run}" || fail
+    if [ -e "${DATA_DIR}/shef" ]; then
+        SHEF="${DATA_DIR}/shef"
+    else
+        SHEF="${TEST_DIR}/shef"
+    fi
 
-    shef --include-path="${data}/input/include" "${data}/input/main.txt" \
-        > "${run}/actual.txt" || fail
+    BINARY="${TEST_DIR}/../../shef" INPUT_DIR="${DATA_DIR}/input" "${SHEF}" \
+        > "${RUN_DIR}/actual.txt" || fail 'shef fails'
 
-    diff "${data}/expected.txt" "${run}/actual.txt" || fail
+    diff "${DATA_DIR}/expected.txt" "${RUN_DIR}/actual.txt" || fail 'actual and expected differ'
 done
