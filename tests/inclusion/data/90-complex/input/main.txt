@@ -1,0 +1,9 @@
+main
+main second line
+#. ccc/bbb
+main 4th line
+#. lib
+main 6th line
+#. self
+#. ccc
+main 9th line
