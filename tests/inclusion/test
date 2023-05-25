@@ -1,20 +1,19 @@
 #!/bin/bash
 
-tests_dir="${0%/*}"
-run_prefix="${tests_dir}/run/inclusion"
-data_prefix="${tests_dir}/data/inclusion"
+dir="${0%/*}"
+run_prefix="${dir}/run"
+data_prefix="${dir}/data"
 
 fail() {
     exit 1
 }
 
 shef() {
-    SHEF_TEST_TXT_RUNNER=cat "${tests_dir}/../shef" "$@"
+    SHEF_TEST_TXT_RUNNER=cat "${dir}/../../shef" "$@"
 }
 
 for data in "${data_prefix}/"*; do
     run="${run_prefix}${data#${data_prefix}}"
-
     mkdir --parents "${run}" || fail
 
     shef --include-path="${data}/input/include" "${data}/input/main.txt" \
