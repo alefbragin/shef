@@ -1,3 +1,3 @@
 #!/bin/bash
 
-SHEF_TEST_TXT_RUNNER=cat "${BINARY}" --include-path="${INPUT_DIR}/include" "${INPUT_DIR}/main.txt" 
+SHEF_TXT_RUNNER=cat "${BINARY}" --include-path="${INPUT_DIR}/include" "${INPUT_DIR}/main.txt" 
