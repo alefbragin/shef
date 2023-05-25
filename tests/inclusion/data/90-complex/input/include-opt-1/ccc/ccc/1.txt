@@ -1,2 +1,7 @@
 /opt-1/ccc/ccc/1
 #. bbb
+
+/opt-1/ccc/ccc/1 after empty line
+
+
+/opt-1/ccc/ccc/1 after 2 empty lines
