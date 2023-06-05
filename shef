@@ -1,21 +1,55 @@
 #!/bin/sh
 
+##
+# Build info variables
+##
+
 PROGRAM=shef
 VERSION=0.0.0
 
+# Just amount of spaces that equals the length of the program's name.
+# It's used for pretty print usage info.
+PROGRAM_SPACES='   '
+
+
+##
+# Environment variables
+##
+
 SHEF_STDIN_PATH="${SHEF_STDIN_PATH:-/dev/stdin}"
 SHEF_RUNTIME_PATH="${SHEF_RUNTIME_PATH:-/run/user/$(id -u)/shef}" || exit 1
-SHEF_INCLUDE_PATH="${SHEF_INCLUDE_PATH:-shef=/usr/local/lib/shef}"
+SHEF_INCLUDE_PATH="${SHEF_INCLUDE_PATH:-/usr/local/lib/shef}"
 
-SHEF_LOCAL_RUNNER="${SHEF_LOCAL_RUNNER:-sh}"
-SHEF_REMOTE_RUNNER="${SHEF_REMOTE_RUNNER:-ssh -T ${SHEF_REMOTE_USER}@${SHEF_REMOTE_HOST} -- sh}"
+SHEF_RUNNER="${SHEF_RUNNER:-sh}"
+SHEF_LOCAL_SH_RUNNER="${SHEF_LOCAL_RUNNER:-sh}"
+SHEF_REMOTE_SH_RUNNER="${SHEF_REMOTE_RUNNER:-ssh -T ${SHEF_REMOTE_USER}@${SHEF_REMOTE_HOST} -- sh}"
+
+
+##
+# Utility variables
+##
 
 NL='
 '
 
-ERROR_CLOSE_FD='cannot close file descriptor: %s'
+ERROR_CLOSE_FD="can't close file descriptor: %s"
 
-stdin_arg() {
+
+##
+# Utility functions
+##
+
+# Executes a command and redirects argument to it's STDIN.
+#
+# Arguments:
+#   $1    Redirected argument.
+#   $2... Command with it's arguments.
+#
+# Outputs:
+#   STDIN|STDOUT Command's output.
+#
+# Never dies.
+rarg() {
 	arg="$1" && shift
 	"$@" <<- EOF
 		${arg}
@@ -23,22 +57,19 @@ stdin_arg() {
 }
 
 print_usage() {
-	indent="$(stdin_arg "${PROGRAM}" tr '[:print:]' ' ')" \
-		|| die 'cannot make indentation for synopsis'
-	cat <<- EOF || die 'cannot print usage'
-		Usage:
+	cat <<- EOF || die "can't print usage"
+		${1}Usage:
 		  ${PROGRAM} --version | -V
 		  ${PROGRAM} --help
-		  ${PROGRAM} [--include-path=<prefix=path[:prefix=path...]> | -I <prefix=path[:prefix=path...]>]
-		  ${indent} [--stdin-runner=<name> | -r <name>]
-		  ${indent} [--[no-]remove-clashed-fifo]
-		  ${indent} [--] [<task>...]
+		  ${PROGRAM} [--include-path=PATH[:PATH] | -I PATH[:PATH]]
+		  ${PROGRAM_SPACES} [--[no-]remove-clashed-fifo]
+		  ${PROGRAM_SPACES} [--] [<task>...]
 	EOF
 }
 
 die() {
 	if [ "$1" = --usage ]; then
-		show_usage=yes && shift
+		show_usage=1 && shift
 	fi
 
 	if [ $# -gt 0 ]; then
@@ -46,18 +77,22 @@ die() {
 		printf "${PROGRAM}: ${format}\n" "$@" 1>&2 || exit 1
 	fi
 
-	if [ "${show_usage}" = yes ]; then
-		echo 1>&2
-		print_usage 1>&2
+	if (( show_usage )); then
+		print_usage "${NL}" 1>&2
 	fi
 
 	exit 1
 }
 
 check_sanity() {
-	LC_ALL=C stdin_arg "$3" grep --extended-regexp --quiet "$1" \
+	LC_ALL=C rarg "$3" grep --extended-regexp --quiet "$1" \
 		|| die "$2: '%s'" "$3"
 }
+
+
+##
+# Shef's implementation functions
+##
 
 find_task() {
 	for task; do
@@ -67,7 +102,7 @@ find_task() {
 			task_files="$(find "${task}" -type f -name '*.sh')" \
 				|| die "cannot find task files for the path: '${task}'"
 			[ -n "${task_files}" ] || die "there are no task files in the path: '${task_path}'"
-			LC_ALL=C stdin_arg "${task_files}" sort || die 'cannot sort task files'
+			LC_ALL=C rarg "${task_files}" sort || die 'cannot sort task files'
 		fi
 	done
 }
@@ -89,11 +124,10 @@ find_task() {
 # Dies if:
 #   - bad library name;
 #   - cannot find library.
-##
 search_library() {
 	check_sanity '^[0-9a-z/-]+$' 'bad library name' "$1"
 
-	hash_key="$(stdin_arg "shef_library_hashC$1" tr '/-' 'S_')" \
+	hash_key="$(rarg "shef_library_hashC$1" tr '/-' 'S_')" \
 		|| die 'cannot make hash key for the library'
 	eval "hash_value=\${${hash_key}}" \
 		|| die "cannot take value for the key: '${hash_key}'"
@@ -132,7 +166,7 @@ include_libraries() {
 		printf '%s\n' "${line}" || die 'cannot print the line to the task'
 		case "${line#${line%%[![:blank:]]*}}" in
 			\#.*)
-				lib="$(stdin_arg "${line}" sed 's/\(^[[:blank:]]*#\.[[:blank:]]*\|[[:blank:]]*$\)//g')" \
+				lib="$(rarg "${line}" sed 's/\(^[[:blank:]]*#\.[[:blank:]]*\|[[:blank:]]*$\)//g')" \
 					|| die "cannot extract library name from line: '${line}'"
 
 				search_library "${lib}"
@@ -166,9 +200,8 @@ include_libraries() {
 #   - no runner command setup for the runner name;
 #   - subprocess for task preprocession fails;
 #   - runner command error.
-##
 run() {
-	runner_uppercase_name="$(stdin_arg "$1" tr '[:lower:]' '[:upper:]')" \
+	runner_uppercase_name="$(rarg "$1" tr '[:lower:]' '[:upper:]')" \
 		|| die 'cannot convert runner name to uppercase'
 
 	eval "runner=\${SHEF_${runner_uppercase_name}_RUNNER}" \
@@ -222,11 +255,6 @@ file_runner() {
 	check_runner_sanity "${shef_runner}"
 }
 
-cmd_print_version() {
-	[ $# -eq 0 ] || die --usage "extra argument: '%s'" "$@"
-	printf 'shef version %s\n' "${VERSION}" || die 'cannot print Shef version'
-}
-
 check_included_path_sanity() {
 	check_sanity '^[0-9a-z/-]*=[^:]+(:[0-9a-z/-]*=[^:]+)*$' \
 		'incorrect format for included path with prefix' "$1"
@@ -236,10 +264,20 @@ check_runner_sanity() {
 	check_sanity '^[0-9a-z-]+$' 'bad runner name' "$2"
 }
 
-cmd_shef() {
+
+##
+# Commands
+##
+
+cmd_version() {
+	[ $# -eq 0 ] || die --usage "extra argument: '%s'" "$@"
+	echo "shef version ${VERSION}"
+}
+
+cmd() {
 	options="$(getopt \
 		--options I:r: \
-		--longoptions include-path:,stdin-runner: \
+		--longoptions include-path: \
 		--longoptions remove-clashed-fifo,no-remove-clashed-fifo \
 		-- "$@")" || die --usage
 
@@ -253,6 +291,7 @@ cmd_shef() {
 			check_included_path_sanity "$2"
 			shef_include_path="$2:${shef_include_path}" && shift 2
 		;;
+		# TODO: Remove this in flavor of environment variable
 		--stdin-runner|-r)
 			check_runner_sanity "$2"
 			shef_stdin_runner="$2" && shift 2
@@ -294,8 +333,13 @@ cmd_shef() {
 	exec 3<&- || die "${ERROR_CLOSE_FD}" 3
 }
 
+
+##
+# Entry point
+##
+
 case "$1" in
-	--version|-V) shift; cmd_print_version "$@" ;;
+	--version|-V) shift; cmd_version "$@" ;;
 	--help) print_usage ;;
-	*) cmd_shef "$@" ;;
+	*) cmd "$@" ;;
 esac
