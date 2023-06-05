@@ -3,6 +3,6 @@
 SHEF_TXT_RUNNER=cat \
     SHEF_INCLUDE_PATH="${INPUT_DIR}/include-env" \
         "${BINARY}" \
-            --include-path="${INPUT_DIR}/include-opt-2" \
             --include-path="${INPUT_DIR}/include-opt-1" \
+            --include-path="${INPUT_DIR}/include-opt-2" \
             "${INPUT_DIR}/main.txt"
