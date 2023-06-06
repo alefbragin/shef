@@ -19,32 +19,32 @@ PROGRAM_SPACES='   '
 NL='
 '
 
-print_usage() {
-	cat <<- EOF || die "can't print usage"
-		${1}Usage:
-		  ${PROGRAM} --version | -V
-		  ${PROGRAM} --help
-		  ${PROGRAM} [--include-path=PATH[:PATH] | -I PATH[:PATH]]
-		  ${PROGRAM_SPACES} [--remove-clashed-fifo | --no-remove-clashed-fifo]
-		  ${PROGRAM_SPACES} [--] [<task>...]
-	EOF
+USAGE="Usage:
+  ${PROGRAM} --version | -V
+  ${PROGRAM} --help
+  ${PROGRAM} [--include-path=PATH[:PATH] | -I PATH[:PATH]]
+  ${PROGRAM_SPACES} [--remove-clashed-fifo | --no-remove-clashed-fifo]
+  ${PROGRAM_SPACES} [--] [TASK...]"
+
+printf_() {
+	printf "$@" || { echo "can't use printf" 1>&2; exit 1; }
 }
 
 die() {
-	if [ "$1" = --usage ]; then
-		show_usage=1 && shift
-	fi
-
 	if [ $# -gt 0 ]; then
 		format="$1" && shift
-		printf "${PROGRAM}: ${format}\n" "$@" 1>&2 || exit 1
-	fi
-
-	if (( show_usage )); then
-		print_usage "${NL}" 1>&2
+		printf_ "${PROGRAM}: ${format}\n" "$@" 1>&2
 	fi
 
 	exit 1
+}
+
+die_usage() {
+	if [ $# -gt 0 ]; then
+		die "${1}${NL}${USAGE}" "$2"
+	else
+		die "${USAGE}"
+	fi
 }
 
 
@@ -273,8 +273,12 @@ check_runner_sanity() {
 ##
 
 cmd_version() {
-	[ $# -eq 0 ] || die --usage "extra argument: '%s'" "$@"
+	[ $# -eq 0 ] || die_usage "extra argument: '%s'" "$1"
 	echo "shef version ${VERSION}"
+}
+
+cmd_help() {
+	echo "${USAGE}"
 }
 
 cmd() {
@@ -282,7 +286,7 @@ cmd() {
 		--options I:r: \
 		--longoptions include-path: \
 		--longoptions remove-clashed-fifo,no-remove-clashed-fifo \
-		-- "$@")" || die --usage
+		-- "$@")" || die_usage
 
 	eval set -- "${options}"
 
@@ -343,6 +347,6 @@ cmd() {
 
 case "$1" in
 	--version|-V) shift; cmd_version "$@" ;;
-	--help) print_usage ;;
+	--help) cmd_help ;;
 	*) cmd "$@" ;;
 esac
