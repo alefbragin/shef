@@ -102,7 +102,7 @@ check_sanity() {
 find_task() {
 	for task; do
 		if [ "${task}" = - ]; then
-			printf '%s\n' "${SHEF_STDIN_PATH}" || die "can't print STDIN path"
+			printf_ '%s\n' "${SHEF_STDIN_PATH}"
 		else
 			task_files="$(find "${task}" -type f -name '*.sh')" \
 				|| die "can't find task files for the path: '${task}'"
@@ -167,7 +167,7 @@ search_library() {
 
 include_libraries() {
 	while IFS= read -r line; do
-		printf '%s\n' "${line}" || die "can't print the line to the task"
+		printf_ '%s\n' "${line}"
 		case "${line#${line%%[![:blank:]]*}}" in
 			\#.*)
 				lib="$(rarg "${line}" sed 's/\(^[[:blank:]]*#\.[[:blank:]]*\|[[:blank:]]*$\)//g')" \
