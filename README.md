@@ -13,6 +13,8 @@ sudo make install
 ## Usage
 
 ```sh
+# All files in path/to/tasks directory with .remote.sh suffix will be run with specified command
+SHEF_REMOTE_SH_RUNNER='ssh -T root@$example.com -- sh' shef path/to/tasks
 shef -I path/to/custom/lib path/to/tasks...
 ```
 

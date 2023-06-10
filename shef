@@ -9,22 +9,44 @@ VERSION=0.0.0
 
 # Just amount of spaces that equals the length of the program's name.
 # It's used for pretty print usage info.
-PROGRAM_SPACES='   '
+PROGRAM_SPACES='    '
 
 
 ##
-# Prelude functions and variables
+# Usage of environment variables
+##
+
+STDIN_PATH="${SHEF_STDIN_PATH:-/dev/stdin}"
+INCLUDE_PATH="${SHEF_INCLUDE_PATH:-/usr/local/lib/shef}"
+
+SH_RUNNER="${SHEF_SH_RUNNER:-sh}"
+RUNNER="${SHEF_RUNNER:-${SH_RUNNER}}"
+
+init_runtime_path() {
+	RUNTIME_PATH="${SHEF_RUNTIME_PATH:-/run/user/$(id -u)/shef}" || die "can't gets a user ID"
+}
+
+
+##
+# Utility variables
 ##
 
 NL='
 '
 
 USAGE="Usage:
-  ${PROGRAM} --version | -V
-  ${PROGRAM} --help
-  ${PROGRAM} [--include-path=PATH[:PATH] | -I PATH[:PATH]]
-  ${PROGRAM_SPACES} [--remove-clashed-fifo | --no-remove-clashed-fifo]
-  ${PROGRAM_SPACES} [--] [TASK...]"
+	${PROGRAM} --version | -V
+	${PROGRAM} --help
+	${PROGRAM} [--include-path=PATH[:PATH] | -I PATH[:PATH]]
+	${PROGRAM_SPACES} [--remove-clashed-fifo | --no-remove-clashed-fifo]
+	${PROGRAM_SPACES} [--] [TASK...]"
+
+ERROR_CLOSE_FD="can't close file descriptor: %s"
+
+
+##
+# Utility functions
+##
 
 printf_() {
 	printf "$@" || { echo "can't use printf" 1>&2; exit 1; }
@@ -46,31 +68,6 @@ die_usage() {
 		die "${USAGE}"
 	fi
 }
-
-
-##
-# Environment variables
-##
-
-SHEF_STDIN_PATH="${SHEF_STDIN_PATH:-/dev/stdin}"
-SHEF_RUNTIME_PATH="${SHEF_RUNTIME_PATH:-/run/user/$(id -u)/shef}" || die "can't gets a user ID"
-SHEF_INCLUDE_PATH="${SHEF_INCLUDE_PATH:-/usr/local/lib/shef}"
-
-SHEF_RUNNER="${SHEF_RUNNER:-sh}"
-SHEF_LOCAL_SH_RUNNER="${SHEF_LOCAL_RUNNER:-sh}"
-SHEF_REMOTE_SH_RUNNER="${SHEF_REMOTE_RUNNER:-ssh -T ${SHEF_REMOTE_USER}@${SHEF_REMOTE_HOST} -- sh}"
-
-
-##
-# Utility variables
-##
-
-ERROR_CLOSE_FD="can't close file descriptor: %s"
-
-
-##
-# Utility functions
-##
 
 # Executes a command and redirects argument to it's STDIN.
 #
