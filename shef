@@ -20,11 +20,13 @@ STDIN_PATH="${SHEF_STDIN_PATH:-/dev/stdin}"
 INCLUDE_PATH="${SHEF_INCLUDE_PATH:-/usr/local/lib/shef}"
 
 SH_RUNNER="${SHEF_SH_RUNNER:-sh}"
-RUNNER="${SHEF_RUNNER:-${SH_RUNNER}}"
+STDIN_RUNNER="${SHEF_STDIN_RUNNER:-${SH_RUNNER}}"
 
 init_runtime_path() {
 	RUNTIME_PATH="${SHEF_RUNTIME_PATH:-/run/user/$(id -u)/shef}" || die "can't gets a user ID"
 }
+
+REMOVE_CLASHED_FIFO="${SHEF_REMOVE_CLASHED_FIFO:-0}"
 
 
 ##
@@ -96,15 +98,16 @@ check_sanity() {
 # Shef's implementation functions
 ##
 
-find_task() {
-	for task; do
-		if [ "${task}" = - ]; then
-			printf_ '%s\n' "${SHEF_STDIN_PATH}"
+find_tasks() {
+	for find_tasks__path; do
+		if [ "${find_tasks__path}" = - ]; then
+			printf_ '%s\n' "${STDIN_PATH}"
 		else
-			task_files="$(find "${task}" -type f -name '*.sh')" \
-				|| die "can't find task files for the path: '${task}'"
-			[ -n "${task_files}" ] || die "there are no task files in the path: '${task_path}'"
-			LC_ALL=C rarg "${task_files}" sort || die "can't sort task files"
+			find_tasks__files="$(find "${find_tasks__path}" -type f -name '*.*')" \
+				|| die "task files for the path are not found: %s" "${find_tasks__path}"
+			[ -n "${find_tasks__files}" ] \
+				|| die "there are no task files in the path: %s" "${find_tasks__path}"
+			LC_ALL=C rarg "${find_tasks__files}" sort || die "can't sort task files"
 		fi
 	done
 }
@@ -182,53 +185,45 @@ include_libraries() {
 	cat
 }
 
-# Run task files by the runner.
+# Run task files by the runner command.
 #
 # Arguments:
-#   $1 Runner name. The name must be sanity.
+#   $1 Runner command
 #   $2 List of task files, each one on a separate line.
 #
 # Globals:
-#   $SHEF_RUNTIME_PATH Path to create temporary FIFO.
-#   $SHEF_*_RUNNER Command for substituted (instead of '*') runner.
-#                  E.g. 'SHEF_LOCAL_RUNNER'.
-#   $shef_remove_clashed_fifo If 'yes' remove file that clashed with temporary
-#                             FIFO file name.
-#   &3 Expect file descriptor to be assigned to STDIN.
+#   $RUNTIME_PATH        Path to create temporary FIFO.
+#   $REMOVE_CLASHED_FIFO If trueish, remove file that clashed with temporary FIFO file name.
+#   &3                   File descriptor. Expect to be assigned to STDIN.
 #
 # Dies if:
-#   - no runner command setup for the runner name;
-#   - subprocess for task preprocession fails;
+#   - can't create runtime path;
+#   - can't create, open, remove FIFO;
+#   - can't reassign, close file descriptors;
+#   - task preprocessing fails;
 #   - runner command error.
 run() {
-	runner_uppercase_name="$(rarg "$1" tr '[:lower:]' '[:upper:]')" \
-		|| die "can't convert runner name to uppercase"
-
-	eval "runner=\${SHEF_${runner_uppercase_name}_RUNNER}" \
-		|| die "can't assign to the runner variable for: '$1'"
-	[ -n "${runner}" ] || die "no runner command setup for this name: '$1'"
-
-	if [ ! -d "${SHEF_RUNTIME_PATH}" ]; then
-		mkdir --parent "${SHEF_RUNTIME_PATH}" \
-			|| die "can't create runtime path: '${SHEF_RUNTIME_PATH}'"
+	if [ ! -d "${RUNTIME_PATH}" ]; then
+		mkdir --parent "${RUNTIME_PATH}" \
+			|| die "can't create runtime path: '${RUNTIME_PATH}'"
 	fi
 
-	fifo="${SHEF_RUNTIME_PATH}/$$.$1.fifo"
+	run__fifo="${RUNTIME_PATH}/$$.fifo"
 
-	if [ "${shef_remove_clashed_fifo}" = yes ]; then
-		rm -f "${fifo}" || die "can't remove clashed FIFO: '${fifo}'"
+	if (( REMOVE_CLASHED_FIFO )); then
+		rm -f "${run__fifo}" || die "can't remove clashed FIFO: %s" "${run__fifo}"
 	fi
 
-	mkfifo "${fifo}" || die "can't create temporary FIFO: '${fifo}'"
-	exec 5<>"${fifo}" 6<"${fifo}" \
-		|| die "can't open file descriptors for FIFO: '${fifo}'"
-	rm "${fifo}" || die "can't remove clashed file: '${fifo}'"
+	mkfifo "${run__fifo}" || die "can't create temporary FIFO: %s" "${run__fifo}"
+	exec 5<>"${run__fifo}" 6<"${run__fifo}" \
+		|| die "can't open file descriptors for FIFO: %s" "${run__fifo}"
+	rm "${run__fifo}" || die "can't remove FIFO file: %s" "${run__fifo}"
 
 	{
-		while IFS= read -r run_file; do
+		while IFS= read -r run__file; do
 			exec 4<&0 0<&3 || die "can't reassign file descriptors: 0, 3"
-			include_libraries < "${run_file}"
-			exec 0<&4 4<&- || die "can't reassign file descriptor 4 and close its"
+			include_libraries < "${run__file}"
+			exec 0<&4 4<&- || die "can't reassign file descriptor and close its: 4"
 		done <<- EOF >&5 || die "can't output tasks content to the pipe"
 			$2
 		EOF
@@ -236,32 +231,41 @@ run() {
 
 	exec 5>&- || die "${ERROR_CLOSE_FD}" 5
 
-	SHEF_RUNNER="$1" ${runner} <&6 || die "can't run task file with runner: '${runner}'"
+	$1 <&6 || die "can't run task file with runner"
 	exec 6<&- || die "${ERROR_CLOSE_FD}" 6
 
-	wait $! || die 'subprocess for task preprocession fails'
+	wait $! || die 'subprocess for task preprocessing fails'
 }
 
-file_runner() {
+check_runner_name_sanity() {
+	check_sanity '^[0-9a-z]+$' 'bad runner name' "$2"
+}
+
+set_file_runner() {
 	if [ "$1" = "${SHEF_STDIN_PATH}" ]; then
-		[ -n "${shef_stdin_runner}" ] \
+		[ -n "${SHEF_STDIN_RUNNER}" ] \
 			|| die 'no runner specified for the task from STDIN'
-		shef_runner="${shef_stdin_runner}"
+		FILE_RUNNER="${SHEF_STDIN_RUNNER}"
 	else
-		shef_runner="${1%.sh}"
-		shef_runner="${shef_runner##*[/.]}"
+		set_file_runner__name="${1##*/}"
+		set_file_runner__name="$(
+			rarg "${set_file_runner__name#*.}" tr '.[:lower:]' '_[:upper:]'
+		)" || die "can't process file's suffix"
+
+		check_runner_name_sanity "${set_file_runner__name}"
+
+		set_file_runner__env_name="SHEF_${set_file_runner__name}_RUNNER"
+
+		eval "FILE_RUNNER=\${${set_file_runner__env_name}}" \
+			|| die "can't assign FILE_RUNNER variable from: '${set_file_runner__env_name}'"
+
+		[ -n "${FILE_RUNNER}" ] \
+			|| die "no runner specified for the task: %s in %s" "$1" "${set_file_runner__env_name}"
 	fi
-
-	check_runner_sanity "${shef_runner}"
 }
 
-check_included_path_sanity() {
-	check_sanity '^[0-9a-z/-]*=[^:]+(:[0-9a-z/-]*=[^:]+)*$' \
-		'incorrect format for included path with prefix' "$1"
-}
-
-check_runner_sanity() {
-	check_sanity '^[0-9a-z-]+$' 'bad runner name' "$2"
+check_include_path_sanity() {
+	check_sanity '^[^:]+(:[^:]+)*$' 'incorrect include paths format' "$1"
 }
 
 
@@ -279,60 +283,49 @@ cmd_help() {
 }
 
 cmd() {
-	options="$(getopt \
-		--options I:r: \
+	cmd__options="$(getopt \
+		--options I: \
 		--longoptions include-path: \
-		--longoptions remove-clashed-fifo,no-remove-clashed-fifo \
 		-- "$@")" || die_usage
 
-	eval set -- "${options}"
+	eval set -- "${cmd__options}"
 
-	check_included_path_sanity "${SHEF_INCLUDE_PATH}"
-	shef_include_path="${SHEF_INCLUDE_PATH}"
+	check_include_path_sanity "${INCLUDE_PATH}"
 
 	while :; do case "$1" in
 		--include-path|-I)
-			check_included_path_sanity "$2"
-			shef_include_path="$2:${shef_include_path}" && shift 2
-		;;
-		# TODO: Remove this in flavor of environment variable
-		--stdin-runner|-r)
-			check_runner_sanity "$2"
-			shef_stdin_runner="$2" && shift 2
-		;;
-		--remove-clashed-fifo)
-			shef_remove_clashed_fifo=yes && shift
-		;;
-		--no-remove-clashed-fifo)
-			shef_remove_clashed_fifo=no && shift
+			check_include_path_sanity "$2"
+			INCLUDE_PATH="$2:${INCLUDE_PATH}" && shift 2
 		;;
 		--)
 			shift && break
 		;;
 	esac done
 
-	task_files="$(find_task "${@:--}")" || die
+	cmd__task_files="$(find_task "${@:--}")" || die
+
+	init_runtime_path
 
 	exec 3<&0 || die "can't open file descriptor 3 for: 0"
-	if IFS= read -r task_file; then
-		file_runner "${task_file}"
-		run_files="${task_file}"
+	if IFS= read -r cmd__task_file; then
+		set_file_runner "${cmd__task_file}"
+		cmd__files_bunch="${cmd__task_file}"
 
-		while IFS= read -r task_file; do
-			prev_runner="${shef_runner}"
-			file_runner "${task_file}"
+		while IFS= read -r cmd__task_file; do
+			cmd__prev_file_runner="${FILE_RUNNER}"
+			set_file_runner "${cmd__task_file}"
 
-			if [ "${prev_runner}" = "${shef_runner}" ]; then
-				run_files="${run_files}${NL}${task_file}"
+			if [ "${cmd__prev_file_runner}" = "${FILE_RUNNER}" ]; then
+				cmd__files_bunch="${cmd__files_bunch}${NL}${cmd__task_file}"
 			else
-				run "${prev_runner}" "${run_files}"
-				run_files="${task_file}"
+				run "${cmd__prev_file_runner}" "${cmd__files_bunch}"
+				cmd__files_bunch="${cmd__task_file}"
 			fi
 		done
 
-		run "${shef_runner}" "${run_files}"
+		run "${FILE_RUNNER}" "${cmd__files_bunch}"
 	fi <<- EOF || die "can't process task files"
-		${task_files}
+		${cmd__files_bunch}
 	EOF
 	exec 3<&- || die "${ERROR_CLOSE_FD}" 3
 }
