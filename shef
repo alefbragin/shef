@@ -7,10 +7,6 @@
 PROGRAM=shef
 VERSION=0.0.0
 
-# Just amount of spaces that equals the length of the program's name.
-# It's used for pretty print usage info.
-PROGRAM_SPACES='    '
-
 
 ##
 # Usage of environment variables
@@ -39,9 +35,7 @@ NL='
 USAGE="Usage:
 	${PROGRAM} --version | -V
 	${PROGRAM} --help
-	${PROGRAM} [--include-path=PATH[:PATH] | -I PATH[:PATH]]
-	${PROGRAM_SPACES} [--remove-clashed-fifo | --no-remove-clashed-fifo]
-	${PROGRAM_SPACES} [--] [TASK...]"
+	${PROGRAM} [-I PATH[:PATH]] [--] [TASK...]"
 
 ERROR_CLOSE_FD="can't close file descriptor: %s"
 
@@ -283,24 +277,15 @@ cmd_help() {
 }
 
 cmd() {
-	cmd__options="$(getopt \
-		--options I: \
-		--longoptions include-path: \
-		-- "$@")" || die_usage
-
-	eval set -- "${cmd__options}"
-
-	check_include_path_sanity "${INCLUDE_PATH}"
-
-	while :; do case "$1" in
-		--include-path|-I)
-			check_include_path_sanity "$2"
-			INCLUDE_PATH="$2:${INCLUDE_PATH}" && shift 2
+	while getopts ':I:' cmd__option; do case "${cmd__option}" in
+		I)
+			check_include_path_sanity "${OPTARG}"
+			INCLUDE_PATH="${OPTARG}:${INCLUDE_PATH}"
 		;;
-		--)
-			shift && break
-		;;
+		\?) die_usage 'invalid option: -%s' "${OPTARG}" ;;
+		:) die_usage 'option -%s requires an argument' "${OPTARG}" ;;
 	esac done
+	shift $(( OPTIND-1 ))
 
 	cmd__task_files="$(find_task "${@:--}")" || die
 
