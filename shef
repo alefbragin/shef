@@ -266,10 +266,6 @@ set_file_runner() {
 	fi
 }
 
-check_include_path_sanity() {
-	check_sanity '^[^:]+(:[^:]+)*$' 'incorrect include paths format' "$1"
-}
-
 
 ##
 # Commands
@@ -285,11 +281,9 @@ cmd_help() {
 }
 
 cmd() {
-	check_include_path_sanity "${INCLUDE_PATH}"
-
 	while getopts ':I:' cmd__option; do case "${cmd__option}" in
 		I)
-			check_include_path_sanity "${OPTARG}"
+			check_sanity '^[^:]+(:[^:]+)*$' 'incorrect include paths format' "${OPTARG}"
 			INCLUDE_PATH="${OPTARG}:${INCLUDE_PATH}"
 		;;
 		\?) die_usage 'invalid option: -%s' "${OPTARG}" ;;
