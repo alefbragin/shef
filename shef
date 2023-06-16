@@ -98,7 +98,7 @@ find_tasks() {
 			printf_ '%s\n' "${STDIN_PATH}"
 		else
 			find_tasks__files="$(find "${find_tasks__path}" -type f -name '*.*')" \
-				|| die "task files for the path are not found: %s" "${find_tasks__path}"
+				|| die "failed while find task files in the path: %s" "${find_tasks__path}"
 			[ -n "${find_tasks__files}" ] \
 				|| die "there are no task files in the path: %s" "${find_tasks__path}"
 			LC_ALL=C rarg "${find_tasks__files}" sort || die "can't sort task files"
@@ -159,21 +159,39 @@ search_library() {
 	die "can't find library: '$1'"
 }
 
-include_libraries() {
-	while IFS= read -r line; do
-		printf_ '%s\n' "${line}"
-		case "${line#${line%%[![:blank:]]*}}" in
+preprocess() {
+	while IFS= read -r preprocess__line; do
+		case "${preprocess__line}" in
 			\#.*)
-				lib="$(rarg "${line}" sed 's/\(^[[:blank:]]*#\.[[:blank:]]*\|[[:blank:]]*$\)//g')" \
-					|| die "can't extract library name from line: '${line}'"
+				preprocess__inc_name="${preprocess__line#\#.}"
+				# Left trim
+				preprocess__inc_name="${preprocess__inc_name#${preprocess__inc_name%%[![:blank:]]*}}"
+				# Right trim
+				preprocess__inc_name="${preprocess__inc_name%${preprocess__inc_name##*[![:blank:]]}}"
 
-				search_library "${lib}"
-				if [ -n "${shef_library_path}" ]; then
-					include_libraries < "${shef_library_path}"
+				# todo like find tasks becouse of dirs
+				search_inc_file "${preprocess__inc_name}"
+
+				if [ -d "${INCLUDED_FILE}" ]; then
+					preprocess__inc_files="$(find "${INCLUDED_FILE}" -type f)" \
+						|| die "failed while find files in directory for inclusion: %s" "${INCLUDED_FILE}"
+					[ -n "${preprocess__inc_files}" ] \
+						|| die "there are no task files in the path: %s" "${INCLUDED_FILE}"
+
+					while IFS= read -r preprocess__inc_file; do
+						# exec 7<&0 0<&3 || die "can't reassign file descriptors: 0, 7"
+						preprocess < "${preprocess__inc_file}"
+						# exec 0<&7 7<&- || die "can't reassign file descriptor and close it: 0, 7"
+					done <<- EOF || die "can't output tasks content to the pipe"
+						${preprocess__inc_files}
+					EOF
+
+				else
+					preprocess < "${INCLUDED_FILE}"
 				fi
 			;;
-			\#*|'') continue ;;
-			*) break ;;
+			\#*) continue ;;
+			*) printf_ '%s\n' "${preprocess__line}" ;;
 		esac
 	done
 	cat
@@ -216,8 +234,8 @@ run() {
 	{
 		while IFS= read -r run__file; do
 			exec 4<&0 0<&3 || die "can't reassign file descriptors: 0, 3"
-			include_libraries < "${run__file}"
-			exec 0<&4 4<&- || die "can't reassign file descriptor and close its: 4"
+			preprocess < "${run__file}"
+			exec 0<&4 4<&- || die "can't reassign file descriptor and close it: 0, 4"
 		done <<- EOF >&5 || die "can't output tasks content to the pipe"
 			$2
 		EOF
@@ -310,7 +328,7 @@ cmd() {
 
 		run "${FILE_RUNNER}" "${cmd__files_bunch}"
 	fi <<- EOF || die "can't process task files"
-		${cmd__files_bunch}
+		${cmd__task_files}
 	EOF
 	exec 3<&- || die "${ERROR_CLOSE_FD}" 3
 }
