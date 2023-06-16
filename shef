@@ -17,6 +17,7 @@ INCLUDE_PATH="${SHEF_INCLUDE_PATH:-/usr/local/lib/shef}"
 
 SH_RUNNER="${SHEF_SH_RUNNER:-sh}"
 STDIN_RUNNER="${SHEF_STDIN_RUNNER:-${SH_RUNNER}}"
+STDIN_EXTENSION="${SHEF_STDIN_EXTENSION:-sh}"
 
 init_runtime_path() {
 	RUNTIME_PATH="${SHEF_RUNTIME_PATH:-/run/user/$(id -u)/shef}" || die "can't gets a user ID"
@@ -114,49 +115,39 @@ find_tasks() {
 # in subshell associated with a runner.
 #
 # Arguments:
-#   $1 Library name.
+#   $1 Inclusion name with extension.
 #
 # Globals:
-#   $shef_library_path Resulting real path or empty string.
+#   $INCLUDED_FILE Resulting real path or empty string.
 #
 # Dies if:
 #   - bad library name;
 #   - can't find library.
-search_library() {
-	check_sanity '^[0-9a-z/-]+$' 'bad library name' "$1"
+search_inclusion() {
+	check_sanity '^[0-9a-z/-]+$' 'bad inclusion name' "$1"
 
-	hash_key="$(rarg "shef_library_hashC$1" tr '/-' 'S_')" \
-		|| die "can't make hash key for the library"
-	eval "hash_value=\${${hash_key}}" \
-		|| die "can't take value for the key: '${hash_key}'"
+	search_inclusion__included_var_name="search_inclusion__$(rarg "$1" tr '/-' 'S_')_included" \
+		|| die "can't make variable name for inclusion indicator"
+	eval "search_inclusion__included=\${${search_inclusion__included_var_name}}"
 
-	if [ "${hash_value}" = found ]; then
-		shef_library_path=
+	if (( search_inclusion__included )); then
+		INCLUDED_FILE=
 		return 0
 	fi
 
-	include_paths="${shef_include_path}"
-	while [ -n "${include_paths}" ]; do
-		case "${include_paths}" in
-			*:*)
-				prefix_path="${include_paths%%:*}"
-				include_paths="${include_paths#*:}"
-			;;
-			*)
-				prefix_path="${include_paths}"
-				include_paths=
-			;;
-		esac
-		prefix="${prefix_path%%=*}"
-		shef_library_path="${prefix_path#${prefix}=}/${1#${prefix}}.sh"
-		if [ -f "${shef_library_path}" ]; then
-			eval "${hash_key}=found" \
-				|| die "can't assign value for the key: '${hash_key}'"
+	search_inclusion_paths="${INCLUDE_PATH}"
+	while [ -n "${search_inclusion_paths}" ]; do
+		search_inclusion_path="${search_inclusion_paths%%:*}"
+		INCLUDED_FILE="${search_inclusion_path}/$1"
+		if [ -f "${INCLUDED_FILE}" ]; then
+			eval "${search_inclusion__included_var_name}=1"
 			return 0
 		fi
+		search_inclusion_paths="${search_inclusion_paths#${search_inclusion_path}}"
+		search_inclusion_paths="${search_inclusion_paths#:}"
 	done
 
-	die "can't find library: '$1'"
+	die "can't find inclusion: '$1'"
 }
 
 preprocess() {
@@ -169,8 +160,7 @@ preprocess() {
 				# Right trim
 				preprocess__inc_name="${preprocess__inc_name%${preprocess__inc_name##*[![:blank:]]}}"
 
-				# todo like find tasks becouse of dirs
-				search_inc_file "${preprocess__inc_name}"
+				search_inclusion "${preprocess__inc_name}.$1"
 
 				if [ -d "${INCLUDED_FILE}" ]; then
 					preprocess__inc_files="$(find "${INCLUDED_FILE}" -type f)" \
@@ -186,7 +176,7 @@ preprocess() {
 						${preprocess__inc_files}
 					EOF
 
-				else
+				elif [ -n "${INCLUDE_PATH}" ]
 					preprocess < "${INCLUDED_FILE}"
 				fi
 			;;
@@ -200,7 +190,7 @@ preprocess() {
 # Run task files by the runner command.
 #
 # Arguments:
-#   $1 Runner command
+#   $1 Runner command.
 #   $2 List of task files, each one on a separate line.
 #
 # Globals:
@@ -234,7 +224,11 @@ run() {
 	{
 		while IFS= read -r run__file; do
 			exec 4<&0 0<&3 || die "can't reassign file descriptors: 0, 3"
-			preprocess < "${run__file}"
+
+			# Sanity check of dot presence in file name isn't needed
+			# becouse of '*.*' pattern in the find command in find_tasks function.
+			preprocess "${run__file##*.}" < "${run__file}"
+
 			exec 0<&4 4<&- || die "can't reassign file descriptor and close it: 0, 4"
 		done <<- EOF >&5 || die "can't output tasks content to the pipe"
 			$2
@@ -249,22 +243,18 @@ run() {
 	wait $! || die 'subprocess for task preprocessing fails'
 }
 
-check_runner_name_sanity() {
-	check_sanity '^[0-9a-z]+$' 'bad runner name' "$2"
-}
-
 set_file_runner() {
-	if [ "$1" = "${SHEF_STDIN_PATH}" ]; then
-		[ -n "${SHEF_STDIN_RUNNER}" ] \
+	if [ "$1" = "${STDIN_PATH}" ]; then
+		[ -n "${STDIN_RUNNER}" ] \
 			|| die 'no runner specified for the task from STDIN'
-		FILE_RUNNER="${SHEF_STDIN_RUNNER}"
+		FILE_RUNNER="${STDIN_RUNNER}"
 	else
 		set_file_runner__name="${1##*/}"
 		set_file_runner__name="$(
 			rarg "${set_file_runner__name#*.}" tr '.[:lower:]' '_[:upper:]'
 		)" || die "can't process file's suffix"
 
-		check_runner_name_sanity "${set_file_runner__name}"
+		check_sanity '^[0-9a-z]+$' 'bad runner name' "${set_file_runner__name}"
 
 		set_file_runner__env_name="SHEF_${set_file_runner__name}_RUNNER"
 
@@ -295,6 +285,8 @@ cmd_help() {
 }
 
 cmd() {
+	check_include_path_sanity "${INCLUDE_PATH}"
+
 	while getopts ':I:' cmd__option; do case "${cmd__option}" in
 		I)
 			check_include_path_sanity "${OPTARG}"
