@@ -107,84 +107,101 @@ find_tasks() {
 	done
 }
 
-# Search library by name and print it real path.
+# Preprocess STDIN, make inclusions and remove comments.
 #
-# If the library has already been found in a previous function call, the resulting
-# real path will be empty. Note that found libraries are stored in the variable
-# local to (sub)shell; this works as appropriate when this function is called
-# in subshell associated with a runner.
+# If the inclusion had already been included in this or a previous function call,
+# it don't be included, and the inclusion directive will be removed.
+# Note that information about inclusion that had already been included are stored in the variables
+# local to (sub)shell; and the mechanism works as appropriate when this function is called
+# in subshell associated with a current run.
 #
 # Arguments:
-#   $1 Inclusion name with extension.
+#   $1 Inclusions files extension.
 #
 # Globals:
-#   $INCLUDED_FILE Resulting real path or empty string.
+#   $INCLUDE_PATH Inclusion searching path in $PATH format.
 #
 # Dies if:
-#   - bad library name;
-#   - can't find library.
-search_inclusion() {
-	check_sanity '^[0-9a-z/-]+$' 'bad inclusion name' "$1"
-
-	search_inclusion__included_var_name="search_inclusion__$(rarg "$1" tr '/-' 'S_')_included" \
-		|| die "can't make variable name for inclusion indicator"
-	eval "search_inclusion__included=\${${search_inclusion__included_var_name}}"
-
-	if (( search_inclusion__included )); then
-		INCLUDED_FILE=
-		return 0
-	fi
-
-	search_inclusion_paths="${INCLUDE_PATH}"
-	while [ -n "${search_inclusion_paths}" ]; do
-		search_inclusion_path="${search_inclusion_paths%%:*}"
-		INCLUDED_FILE="${search_inclusion_path}/$1"
-		if [ -e "${INCLUDED_FILE}" ]; then
-			eval "${search_inclusion__included_var_name}=1"
-			return 0
-		fi
-		search_inclusion_paths="${search_inclusion_paths#${search_inclusion_path}}"
-		search_inclusion_paths="${search_inclusion_paths#:}"
-	done
-
-	die "can't find inclusion: '$1'"
-}
-
+#   - bad inclusion name;
+#   - can't find inclusion;
+#   - no files found in inclusion (when inclusion is a path);
+#   - utilities errors occured.
 preprocess() {
-	while IFS= read -r preprocess__line; do
-		case "${preprocess__line}" in
-			\#.*)
-				preprocess__inc_name="${preprocess__line#\#.}"
-				# Left trim
-				preprocess__inc_name="${preprocess__inc_name#${preprocess__inc_name%%[![:blank:]]*}}"
-				# Right trim
-				preprocess__inc_name="${preprocess__inc_name%${preprocess__inc_name##*[![:blank:]]}}"
+	while IFS= read -r preprocess__line; do case "${preprocess__line}" in
+		\#.*)
+			# Preprocess inclusion directive
 
-				search_inclusion "${preprocess__inc_name}.$1"
+			# Get inclusion name
+			preprocess__inc_name="${preprocess__line#\#.}"
+			# Left trim
+			preprocess__inc_name="${preprocess__inc_name#${preprocess__inc_name%%[![:blank:]]*}}"
+			# Right trim
+			preprocess__inc_name="${preprocess__inc_name%${preprocess__inc_name##*[![:blank:]]}}"
 
-				if [ -d "${INCLUDED_FILE}" ]; then
-					preprocess__inc_files="$(find "${INCLUDED_FILE}" -type f)" \
-						|| die "failed while find files in directory for inclusion: %s" "${INCLUDED_FILE}"
-					[ -n "${preprocess__inc_files}" ] \
-						|| die "there are no task files in the path: %s" "${INCLUDED_FILE}"
+			check_sanity '^[0-9a-z/-]+$' 'bad inclusion name' "${preprocess__inc_name}"
 
-					while IFS= read -r preprocess__inc_file; do
-						# exec 7<&0 0<&3 || die "can't reassign file descriptors: 0, 7"
-						preprocess < "${preprocess__inc_file}"
-						# exec 0<&7 7<&- || die "can't reassign file descriptor and close it: 0, 7"
-					done <<- EOF || die "can't output tasks content to the pipe"
-						${preprocess__inc_files}
-					EOF
+			preprocess__included_var_name="preprocess__$(
+				rarg "${preprocess__inc_name}" tr '/-' 'S_'
+			)_included" \
+				|| die "can't make variable name for inclusion indicator"
 
-				elif [ -n "${INCLUDED_FILE}" ]
-					preprocess < "${INCLUDED_FILE}"
+			eval "preprocess__included=\${${preprocess__included_var_name}}"
+			# Skip if already had been included
+			if (( preprocess__included )); then
+				continue
+			fi
+
+			# Search real path for the inclusion
+			preprocess__inc_path=
+			preprocess__paths="${INCLUDE_PATH}"
+			while [ -n "${preprocess__paths}" ]; do
+				preprocess__path="${preprocess__paths%%:*}"
+				preprocess__inc_path="${preprocess__path}/${preprocess__inc_name}.$1"
+				if [ -e "${preprocess__inc_path}" ]; then
+					# Set an inclusion indicator for the inclusion
+					eval "${preprocess__included_var_name}=1"
+					break
 				fi
-			;;
-			\#*) continue ;;
-			*) printf_ '%s\n' "${preprocess__line}" ;;
-		esac
-	done
-	# cat
+				preprocess__paths="${preprocess__paths#${preprocess__path}}"
+				preprocess__paths="${preprocess__paths#:}"
+			done
+
+			[ -n "${preprocess__inc_path}" ] \
+				|| die "can't find inclusion: %s" "${preprocess__inc_name}"
+
+			if [ ! -d "${preprocess__inc_path}" ]; then
+				# Include the file and all it's inclusions
+				preprocess "$1" < "${preprocess__inc_path}"
+			else
+
+				# Recursively include all file (and it's inclusions)
+				# with appropriate extension from directory
+
+				preprocess__inc_files="$(find "${preprocess__inc_path}" -type f -name "*.$1")" \
+					|| die "failed while find files in directory for inclusion: %s" \
+						"${preprocess__inc_path}"
+
+				[ -n "${preprocess__inc_files}" ] \
+					|| die "there are no task files in the inclusion path: %s" \
+						"${preprocess__inc_path}"
+
+				while IFS= read -r preprocess__inc_file; do
+					# exec 7<&0 0<&3 || die "can't reassign file descriptors: 0, 7"
+					preprocess "$1" < "${preprocess__inc_file}"
+					# exec 0<&7 7<&- || die "can't reassign file descriptor and close it: 0, 7"
+				done <<- EOF || die "can't preprocess inclusion files"
+					${preprocess__inc_files}
+				EOF
+
+			fi
+		;;
+		\#*)
+			# Skip comments that starts right from the line begining.
+			# We do not remove comments are padded with spaces to keep it's in heredocs.
+			continue
+		;;
+		*) printf_ '%s\n' "${preprocess__line}" ;;  # Print ordinary line w/o modification
+	esac done
 }
 
 # Run task files by the runner command.
@@ -203,7 +220,7 @@ preprocess() {
 #   - can't create, open, remove FIFO;
 #   - can't reassign, close file descriptors;
 #   - task preprocessing fails;
-#   - runner command error.
+#   - runner command error occured.
 run() {
 	if [ ! -d "${RUNTIME_PATH}" ]; then
 		mkdir --parent "${RUNTIME_PATH}" \
