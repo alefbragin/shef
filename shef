@@ -308,7 +308,7 @@ cmd() {
 	esac done
 	shift $(( OPTIND-1 ))
 
-	cmd__task_files="$(find_task "${@:--}")" || die
+	cmd__task_files="$(find_tasks "${@:--}")" || die
 
 	init_runtime_path
 
