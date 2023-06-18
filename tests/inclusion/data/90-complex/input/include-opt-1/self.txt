@@ -1,3 +1,3 @@
-/opt-2/self before self
+/opt-1/self before self
 #. self
-/opt-2/self after self
+/opt-1/self after self

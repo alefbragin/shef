@@ -1,2 +1,2 @@
 #. one
-/opt-1/ccc/aaa/1
+/opt-2/ccc/aaa/1
