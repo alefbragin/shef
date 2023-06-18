@@ -263,9 +263,15 @@ run() {
 		while IFS= read -r run__file; do
 			exec 4<&0 0<&3 || die "can't reassign file descriptors: 0, 3"
 
-			# Sanity check of dot presence in file name isn't needed
-			# becouse of '*.*' pattern in the find command in find_tasks function.
-			preprocess "${run__file##*.}" < "${run__file}"
+			if [ "${run__file}" = "${STDIN_PATH}" ]; then
+				run__extension="${STDIN_EXTENSION}"
+			else
+				# Sanity check of dot presence in file name isn't needed
+				# becouse of '*.*' pattern in the find command in find_tasks function.
+				run__extension="${run__file##*.}"
+			fi
+
+			preprocess "${run__extension}" < "${run__file}"
 
 			exec 0<&4 4<&- || die "can't reassign file descriptor and close it: 0, 4"
 		done <<- EOF >&5 || die "can't output tasks content to the pipe"
@@ -281,28 +287,28 @@ run() {
 	wait $! || die 'subprocess for task preprocessing fails'
 }
 
-set_file_runner() {
+set_task_runner() {
 	if [ "$1" = "${STDIN_PATH}" ]; then
 		[ -n "${STDIN_RUNNER}" ] \
 			|| die 'no runner specified for the task from STDIN'
-		FILE_RUNNER="${STDIN_RUNNER}"
+		TASK_RUNNER="${STDIN_RUNNER}"
 	else
-		set_file_runner__suffix="${1##*/}"
-		set_file_runner__suffix="${set_file_runner__suffix#*.}"
+		set_task_runner__suffix="${1##*/}"
+		set_task_runner__suffix="${set_task_runner__suffix#*.}"
 
-		check_sanity '^[0-9a-z.]+$' 'bad runner suffix' "${set_file_runner__suffix}"
+		check_sanity '^[0-9a-z.]+$' 'bad runner suffix' "${set_task_runner__suffix}"
 
-		set_file_runner__name="$(
-			rarg "${set_file_runner__suffix}" tr '.[:lower:]' '_[:upper:]'
-		)" || die "can't process file's suffix"
+		set_task_runner__name="$(
+			rarg "${set_task_runner__suffix}" tr '.[:lower:]' '_[:upper:]'
+		)" || die "can't process task suffix"
 
-		set_file_runner__env_name="SHEF_${set_file_runner__name}_RUNNER"
+		set_task_runner__env_name="SHEF_${set_task_runner__name}_RUNNER"
 
-		eval "FILE_RUNNER=\${${set_file_runner__env_name}}" \
-			|| die "can't assign FILE_RUNNER variable from: '${set_file_runner__env_name}'"
+		eval "TASK_RUNNER=\${${set_task_runner__env_name}}" \
+			|| die "can't assign TASK_RUNNER variable from: '${set_task_runner__env_name}'"
 
-		[ -n "${FILE_RUNNER}" ] \
-			|| die "no runner specified for the task: %s in %s" "$1" "${set_file_runner__env_name}"
+		[ -n "${TASK_RUNNER}" ] \
+			|| die "no runner specified for the task: %s in %s" "$1" "${set_task_runner__env_name}"
 	fi
 }
 
@@ -337,22 +343,22 @@ cmd() {
 
 	exec 3<&0 || die "can't open file descriptor 3 for: 0"
 	if IFS= read -r cmd__task; then
-		set_file_runner "${cmd__task}"
+		set_task_runner "${cmd__task}"
 		cmd__tasks_bunch="${cmd__task}"
 
 		while IFS= read -r cmd__task; do
-			cmd__prev_file_runner="${FILE_RUNNER}"
-			set_file_runner "${cmd__task}"
+			cmd__prev_task_runner="${TASK_RUNNER}"
+			set_task_runner "${cmd__task}"
 
-			if [ "${cmd__prev_file_runner}" = "${FILE_RUNNER}" ]; then
+			if [ "${cmd__prev_task_runner}" = "${TASK_RUNNER}" ]; then
 				cmd__tasks_bunch="${cmd__tasks_bunch}${NL}${cmd__task}"
 			else
-				run "${cmd__prev_file_runner}" "${cmd__tasks_bunch}"
+				run "${cmd__prev_task_runner}" "${cmd__tasks_bunch}"
 				cmd__tasks_bunch="${cmd__task}"
 			fi
 		done
 
-		run "${FILE_RUNNER}" "${cmd__tasks_bunch}"
+		run "${TASK_RUNNER}" "${cmd__tasks_bunch}"
 	fi <<- EOF || die "can't process tasks"
 		${cmd__tasks}
 	EOF
