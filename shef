@@ -88,6 +88,25 @@ check_sanity() {
 		|| die "$2: '%s'" "$3"
 }
 
+# Find files in specified path according a name pattern.
+#
+# Arguments:
+#   $1 Path for searching.
+#   $2 Name pattern. E.g. `*.sh'.
+#
+# Outputs:
+#   STDOUT File list separated by newlines.
+#
+# Dies if:
+#   - no files in the path was found;
+#   - utilities errors occured.
+find_files() {
+	find_files__files="$(find "$1" -type f -name "$2")" \
+		|| die "failed while find files in the path: %s" "$1"
+	[ -n "${find_files__files}" ] \
+		|| die "no files in the path was found: %s" "$1"
+	LC_ALL=C rarg "${find_files__files}" sort || die "can't sort files"
+}
 
 ##
 # Shef's implementation functions
@@ -98,11 +117,7 @@ find_tasks() {
 		if [ "${find_tasks__path}" = - ]; then
 			printf_ '%s\n' "${STDIN_PATH}"
 		else
-			find_tasks__files="$(find "${find_tasks__path}" -type f -name '*.*')" \
-				|| die "failed while find task files in the path: %s" "${find_tasks__path}"
-			[ -n "${find_tasks__files}" ] \
-				|| die "there are no task files in the path: %s" "${find_tasks__path}"
-			LC_ALL=C rarg "${find_tasks__files}" sort || die "can't sort task files"
+			find_files "${find_tasks__path}" '*.*'
 		fi
 	done
 }
@@ -113,13 +128,16 @@ find_tasks() {
 # it don't be included, and the inclusion directive will be removed.
 # Note that information about inclusion that had already been included are stored in the variables
 # local to (sub)shell; and the mechanism works as appropriate when this function is called
-# in subshell associated with a current run.
+# in (sub)shell associated with a current run.
 #
 # Arguments:
 #   $1 Inclusions files extension.
 #
 # Globals:
 #   $INCLUDE_PATH Inclusion searching path in $PATH format.
+#
+# Outputs:
+#   STDOUT Preprocessed text.
 #
 # Dies if:
 #   - bad inclusion name;
@@ -156,10 +174,17 @@ preprocess() {
 			preprocess__paths="${INCLUDE_PATH}"
 			while [ -n "${preprocess__paths}" ]; do
 				preprocess__path="${preprocess__paths%%:*}"
-				preprocess__inc_path="${preprocess__path}/${preprocess__inc_name}.$1"
-				if [ -e "${preprocess__inc_path}" ]; then
+				if [ -f "${preprocess__path}/${preprocess__inc_name}.$1" ]; then
+					preprocess__inc_is_file=1
 					# Set an inclusion indicator for the inclusion
 					eval "${preprocess__included_var_name}=1"
+					preprocess__inc_path="${preprocess__path}/${preprocess__inc_name}.$1"
+					break
+				elif [ -d "${preprocess__path}/${preprocess__inc_name}" ]; then
+					preprocess__inc_is_file=0
+					# Set an inclusion indicator for the inclusion
+					eval "${preprocess__included_var_name}=1"
+					preprocess__inc_path="${preprocess__path}/${preprocess__inc_name}"
 					break
 				fi
 				preprocess__paths="${preprocess__paths#${preprocess__path}}"
@@ -169,7 +194,7 @@ preprocess() {
 			[ -n "${preprocess__inc_path}" ] \
 				|| die "can't find inclusion: %s" "${preprocess__inc_name}"
 
-			if [ ! -d "${preprocess__inc_path}" ]; then
+			if (( preprocess__inc_is_file )); then
 				# Include the file and all it's inclusions
 				preprocess "$1" < "${preprocess__inc_path}"
 			else
@@ -177,12 +202,8 @@ preprocess() {
 				# Recursively include all file (and it's inclusions)
 				# with appropriate extension from directory
 
-				preprocess__inc_files="$(find "${preprocess__inc_path}" -type f -name "*.$1")" \
-					|| die "failed while find files in directory for inclusion: %s" \
-						"${preprocess__inc_path}"
-
-				[ -n "${preprocess__inc_files}" ] \
-					|| die "there are no task files in the inclusion path: %s" \
+				preprocess__inc_files="$(find_files "${preprocess__inc_path}" "*.$1")" \
+					|| die "can't find appropriate files in the path to include: %s" \
 						"${preprocess__inc_path}"
 
 				while IFS= read -r preprocess__inc_file; do
@@ -310,30 +331,30 @@ cmd() {
 	esac done
 	shift $(( OPTIND-1 ))
 
-	cmd__task_files="$(find_tasks "${@:--}")" || die
+	cmd__tasks="$(find_tasks "${@:--}")" || die "can't find tasks"
 
 	init_runtime_path
 
 	exec 3<&0 || die "can't open file descriptor 3 for: 0"
-	if IFS= read -r cmd__task_file; then
-		set_file_runner "${cmd__task_file}"
-		cmd__files_bunch="${cmd__task_file}"
+	if IFS= read -r cmd__task; then
+		set_file_runner "${cmd__task}"
+		cmd__tasks_bunch="${cmd__task}"
 
-		while IFS= read -r cmd__task_file; do
+		while IFS= read -r cmd__task; do
 			cmd__prev_file_runner="${FILE_RUNNER}"
-			set_file_runner "${cmd__task_file}"
+			set_file_runner "${cmd__task}"
 
 			if [ "${cmd__prev_file_runner}" = "${FILE_RUNNER}" ]; then
-				cmd__files_bunch="${cmd__files_bunch}${NL}${cmd__task_file}"
+				cmd__tasks_bunch="${cmd__tasks_bunch}${NL}${cmd__task}"
 			else
-				run "${cmd__prev_file_runner}" "${cmd__files_bunch}"
-				cmd__files_bunch="${cmd__task_file}"
+				run "${cmd__prev_file_runner}" "${cmd__tasks_bunch}"
+				cmd__tasks_bunch="${cmd__task}"
 			fi
 		done
 
-		run "${FILE_RUNNER}" "${cmd__files_bunch}"
-	fi <<- EOF || die "can't process task files"
-		${cmd__task_files}
+		run "${FILE_RUNNER}" "${cmd__tasks_bunch}"
+	fi <<- EOF || die "can't process tasks"
+		${cmd__tasks}
 	EOF
 	exec 3<&- || die "${ERROR_CLOSE_FD}" 3
 }
