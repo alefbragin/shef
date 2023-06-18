@@ -5,10 +5,7 @@ RUN_PREFIX="${TEST_DIR}/run"
 DATA_PREFIX="${TEST_DIR}/data"
 
 fail() {
-    if [ $# -gt 0 ]; then
-        printf "inclusion test (${DATA_BASENAME}) fails: $1" "$2"
-    fi
-
+    echo "inclusion test (${DATA_BASENAME}) fails${1+: $1}"
     exit 1
 }
 
@@ -26,5 +23,7 @@ for DATA_DIR in "${DATA_PREFIX}/"*; do
     BINARY="${TEST_DIR}/../../shef" INPUT_DIR="${DATA_DIR}/input" "${SHEF}" \
         > "${RUN_DIR}/actual.txt" || fail 'shef fails'
 
-    diff "${DATA_DIR}/expected.txt" "${RUN_DIR}/actual.txt" || fail 'actual and expected differ'
+    diff "${DATA_DIR}/expected.txt" "${RUN_DIR}/actual.txt" || fail 'actual and expected are differ'
+
+    echo "inclusion test (${DATA_BASENAME}) is passed"
 done

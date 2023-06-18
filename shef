@@ -266,12 +266,14 @@ set_file_runner() {
 			|| die 'no runner specified for the task from STDIN'
 		FILE_RUNNER="${STDIN_RUNNER}"
 	else
-		set_file_runner__name="${1##*/}"
-		set_file_runner__name="$(
-			rarg "${set_file_runner__name#*.}" tr '.[:lower:]' '_[:upper:]'
-		)" || die "can't process file's suffix"
+		set_file_runner__suffix="${1##*/}"
+		set_file_runner__suffix="${set_file_runner__suffix#*.}"
 
-		check_sanity '^[0-9a-z]+$' 'bad runner name' "${set_file_runner__name}"
+		check_sanity '^[0-9a-z.]+$' 'bad runner suffix' "${set_file_runner__suffix}"
+
+		set_file_runner__name="$(
+			rarg "${set_file_runner__suffix}" tr '.[:lower:]' '_[:upper:]'
+		)" || die "can't process file's suffix"
 
 		set_file_runner__env_name="SHEF_${set_file_runner__name}_RUNNER"
 
