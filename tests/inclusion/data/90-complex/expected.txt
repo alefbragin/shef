@@ -1,9 +1,30 @@
 task-1
 task-1 second line
-#. ccc/bbb
+/opt-2/ccc/bbb/1
+/opt-2/ccc/bbb/2
+/env/aaa
+/env/bbb
 task-1 4th line
-#. lib
+/opt-2/lib/mod-2
+/opt-2/cat
+/opt-2/ccc/ccc/1
+
+/opt-2/ccc/ccc/1 after empty line
+
+
+/opt-2/ccc/ccc/1 after 2 empty lines
+/opt-2/cat 3rd line
 task-1 6th line
-#. self
-#. ccc
+/opt-1/self before self
+/opt-1/self after self
+/opt-2/another before one
+/opt-2/another after one
+/env/one
+/opt-2/ccc/aaa/1
 task-1 9th line
+stdin start
+stdin end
+task-3
+task-3 second line
+task-3 4th line
+task-3 6th line
