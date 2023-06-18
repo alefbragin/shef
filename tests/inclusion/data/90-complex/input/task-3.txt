@@ -1,0 +1,9 @@
+task-3
+task-3 second line
+#. ccc/bbb
+task-3 4th line
+#. lib
+task-3 6th line
+#. self
+#. ccc
+task-3 9th line
