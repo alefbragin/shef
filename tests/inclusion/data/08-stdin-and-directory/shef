@@ -1,0 +1,6 @@
+#!/bin/bash
+
+SHEF_INCLUDE_PATH="${INPUT_DIR}/include" \
+	SHEF_STDIN_EXTENSION=txt \
+	SHEF_STDIN_RUNNER=cat \
+	"${BINARY}" < "${INPUT_DIR}/stdin"
