@@ -1,2 +1,2 @@
-#. one
-#. another
+#. one.txt
+#. another.txt

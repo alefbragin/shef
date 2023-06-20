@@ -1,2 +1,2 @@
-#. inner
+#. inner.txt
 line from outer library
