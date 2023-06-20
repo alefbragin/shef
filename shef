@@ -88,11 +88,11 @@ check_sanity() {
 		|| die "$2: '%s'" "$3"
 }
 
-# Find files in specified path according a name pattern.
+# Find files in specified path according with passed options and sort its.
 #
 # Arguments:
-#   $1 Path for searching.
-#   $2 Name pattern. E.g. `*.sh'.
+#   $1    Path for searching.
+#   $2... Options of find utility.
 #
 # Outputs:
 #   STDOUT File list separated by newlines.
@@ -100,12 +100,13 @@ check_sanity() {
 # Dies if:
 #   - no files in the path was found;
 #   - utilities errors occured.
-find_files() {
-	find_files__files="$(find "$1" -type f -name "$2")" \
-		|| die "failed while find files in the path: %s" "$1"
-	[ -n "${find_files__files}" ] \
-		|| die "no files in the path was found: %s" "$1"
-	LC_ALL=C rarg "${find_files__files}" sort || die "can't sort files"
+find_sort() {
+	find_sort__starting_point="$1" && shift
+	find_sort__files="$(find "${find_sort__starting_point}" "$@")" \
+		|| die "failed while find files in the path: %s" "${find_sort__starting_point}"
+	[ -n "${find_sort__files}" ] \
+		|| die "no files in the path was found: %s" "${find_sort__starting_point}"
+	LC_ALL=C rarg "${find_sort__files}" sort || die "can't sort files"
 }
 
 ##
@@ -117,7 +118,7 @@ find_tasks() {
 		if [ "${find_tasks__path}" = - ]; then
 			printf_ '%s\n' "${STDIN_PATH}"
 		else
-			find_files "${find_tasks__path}" '*.*'
+			find_sort "${find_tasks__path}" -type f -name '*.*'
 		fi
 	done
 }
@@ -170,20 +171,23 @@ preprocess() {
 			fi
 
 			# Search real path for the inclusion
+			# TODO search dir by dir
 			preprocess__inc_path=
 			preprocess__paths="${INCLUDE_PATH}"
 			while [ -n "${preprocess__paths}" ]; do
 				preprocess__path="${preprocess__paths%%:*}"
+				preprocess__inc_prefix="${preprocess__inc_name%%/*}"
+
+				if [ -d "${preprocess__path}/${preprocess__inc_prefix}" ]; then
+					break
+				fi
+
 				if [ -f "${preprocess__path}/${preprocess__inc_name}.$1" ]; then
 					preprocess__inc_is_file=1
-					# Set an inclusion indicator for the inclusion
-					eval "${preprocess__included_var_name}=1"
 					preprocess__inc_path="${preprocess__path}/${preprocess__inc_name}.$1"
 					break
 				elif [ -d "${preprocess__path}/${preprocess__inc_name}" ]; then
 					preprocess__inc_is_file=0
-					# Set an inclusion indicator for the inclusion
-					eval "${preprocess__included_var_name}=1"
 					preprocess__inc_path="${preprocess__path}/${preprocess__inc_name}"
 					break
 				fi
@@ -194,26 +198,37 @@ preprocess() {
 			[ -n "${preprocess__inc_path}" ] \
 				|| die "can't find inclusion: %s" "${preprocess__inc_name}"
 
+			# Set an inclusion indicator for the inclusion
+			eval "${preprocess__included_var_name}=1"
+
 			if (( preprocess__inc_is_file )); then
 				# Include the file and all it's inclusions
 				preprocess "$1" < "${preprocess__inc_path}"
 			else
-
 				# Recursively include all file (and it's inclusions)
 				# with appropriate extension from directory
 
-				preprocess__inc_files="$(find_files "${preprocess__inc_path}" "*.$1")" \
-					|| die "can't find appropriate files in the path to include: %s" \
-						"${preprocess__inc_path}"
+				preprocess__inc_children="$(
+					find_sort "${preprocess__inc_path}" \
+						-mindepth 1 -maxdepth 1 \
+						-type f -a -name "*.$1" -o -type d -printf '%P%y'
+				)" || die "can't find appropriate items in the path to include: %s" \
+					"${preprocess__inc_path}"
 
-				while IFS= read -r preprocess__inc_file; do
-					# exec 7<&0 0<&3 || die "can't reassign file descriptors: 0, 7"
-					preprocess "$1" < "${preprocess__inc_file}"
-					# exec 0<&7 7<&- || die "can't reassign file descriptor and close it: 0, 7"
-				done <<- EOF || die "can't preprocess inclusion files"
-					${preprocess__inc_files}
+				preprocess__inc_index=
+				while IFS= read -r preprocess__inc_child; do
+					case "${preprocess__inc_child}" in
+						*d) preprocess__inc_directive="#. ${preprocess__inc_name}/${preprocess__inc_child%d}" ;;
+						*f) preprocess__inc_directive="#. ${preprocess__inc_name}/${preprocess__inc_child%.${1}f}" ;;
+					esac
+					preprocess__inc_index="${preprocess__inc_index}${preprocess__inc_directive}${NL}"
+				done <<- EOF
+					${preprocess__inc_children}
 				EOF
 
+				preprocess "$1" <<- EOF
+					${preprocess__inc_index}
+				EOF
 			fi
 		;;
 		\#*)
@@ -261,7 +276,7 @@ run() {
 
 	{
 		while IFS= read -r run__file; do
-			exec 4<&0 0<&3 || die "can't reassign file descriptors: 0, 3"
+			# exec 4<&0 0<&3 || die "can't reassign file descriptors: 0, 3"
 
 			if [ "${run__file}" = "${STDIN_PATH}" ]; then
 				run__extension="${STDIN_EXTENSION}"
@@ -273,7 +288,7 @@ run() {
 
 			preprocess "${run__extension}" < "${run__file}"
 
-			exec 0<&4 4<&- || die "can't reassign file descriptor and close it: 0, 4"
+			# exec 0<&4 4<&- || die "can't reassign file descriptor and close it: 0, 4"
 		done <<- EOF >&5 || die "can't output tasks content to the pipe"
 			$2
 		EOF
