@@ -1,5 +1,5 @@
 /opt-2/ccc/ccc/1
-#. bbb
+#. bbb.txt
 
 /opt-2/ccc/ccc/1 after empty line
 

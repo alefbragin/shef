@@ -1,2 +1,2 @@
 /opt-2/ccc/bbb/2
-#. aaa
+#. aaa.txt

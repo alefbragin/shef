@@ -1,3 +1,3 @@
 /opt-1/self before self
-#. self
+#. self.txt
 /opt-1/self after self
