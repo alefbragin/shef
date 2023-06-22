@@ -87,40 +87,10 @@ check_sanity() {
 		|| die "$2: '%s'" "$3"
 }
 
-# Find files in specified path according with passed options and sort its.
-#
-# Arguments:
-#   $1    Path for searching.
-#   $2... Options of find utility.
-#
-# Outputs:
-#   STDOUT File list separated by newlines.
-#
-# Dies if:
-#   - no files in the path was found;
-#   - utilities errors occured.
-find_sort() {
-	find_sort__starting_point="$1" && shift
-	find_sort__files="$(find "${find_sort__starting_point}" "$@")" \
-		|| die "failed while find files in the path: %s" "${find_sort__starting_point}"
-	[ -n "${find_sort__files}" ] \
-		|| die "no files in the path was found: %s" "${find_sort__starting_point}"
-	LC_ALL=C rarg "${find_sort__files}" sort || die "can't sort files"
-}
 
 ##
 # Shef's implementation functions
 ##
-
-find_tasks() {
-	for find_tasks__path; do
-		if [ "${find_tasks__path}" = - ]; then
-			printf_ '%s\n' "${STDIN_PATH}"
-		else
-			find_sort "${find_tasks__path}" -type f -name '*.*'
-		fi
-	done
-}
 
 # Preprocess STDIN, make file inclusions and remove comments.
 #
@@ -344,12 +314,14 @@ cmd() {
 	esac done
 	shift $(( OPTIND-1 ))
 
-	cmd__tasks="$(find_tasks "${@:--}")" || die "can't find tasks"
-
 	init_runtime_path
 
 	exec 3<&0 || die "can't open file descriptor 3 for: 0"
 	if IFS= read -r cmd__task; then
+		if [ "${cmd__task}" = - ]; then
+			cmd__task="${STDIN_PATH}"
+		fi
+
 		set_task_runner "${cmd__task}"
 		cmd__tasks_bunch="${cmd__task}"
 
@@ -367,7 +339,7 @@ cmd() {
 
 		run "${TASK_RUNNER}" "${cmd__tasks_bunch}"
 	fi <<- EOF || die "can't process tasks"
-		${cmd__tasks}
+		${@:--}
 	EOF
 	exec 3<&- || die "${ERROR_CLOSE_FD}" 3
 }
