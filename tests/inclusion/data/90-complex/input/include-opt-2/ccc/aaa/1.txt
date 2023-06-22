@@ -1,2 +1,2 @@
-#. one
+#. one.txt
 /opt-2/ccc/aaa/1

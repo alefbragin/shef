@@ -1,1 +1,1 @@
-#. cat/lib.txt
+#. ./cat/lib.txt

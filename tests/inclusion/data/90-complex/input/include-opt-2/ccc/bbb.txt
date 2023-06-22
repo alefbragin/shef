@@ -1,2 +1,2 @@
-#. bbb/1.txt
-#. bbb/2.txt
+#. ./bbb/1.txt
+#. ./bbb/2.txt

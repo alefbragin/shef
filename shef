@@ -35,7 +35,7 @@ NL='
 USAGE="Usage:
 	${PROGRAM} --version | -V
 	${PROGRAM} --help
-	${PROGRAM} [-I PATH[:PATH]] [--] [TASK...]"
+	${PROGRAM} [-I PATH[:PATH]] [TASK...]"
 
 ERROR_CLOSE_FD="can't close file descriptor: %s"
 
@@ -238,7 +238,7 @@ run() {
 
 	{
 		while IFS= read -r run__file; do
-			# exec 4<&0 0<&3 || die "can't reassign file descriptors: 0, 3"
+			exec 4<&0 0<&3 || die "can't reassign file descriptors: 0, 3"
 
 			if [ "${run__file}" = "${STDIN_PATH}" ]; then
 				run__dir="$PWD"
@@ -248,7 +248,7 @@ run() {
 
 			preprocess "${run__dir}" < "${run__file}"
 
-			# exec 0<&4 4<&- || die "can't reassign file descriptor and close it: 0, 4"
+			exec 0<&4 4<&- || die "can't reassign file descriptor and close it: 0, 4"
 		done <<- EOF >&5 || die "can't output tasks content to the pipe"
 			$2
 		EOF
@@ -315,30 +315,37 @@ cmd() {
 	init_runtime_path
 
 	exec 3<&0 || die "can't open file descriptor 3 for: 0"
-	if IFS= read -r cmd__task; then
+
+	if [ $# -eq 0 ]; then
+		set -- -
+	fi
+
+	cmd__task="$1" && shift
+
+	if [ "${cmd__task}" = - ]; then
+		cmd__task="${STDIN_PATH}"
+	fi
+
+	set_task_runner "${cmd__task}"
+	cmd__tasks_bunch="${cmd__task}"
+
+	for cmd_task; do
 		if [ "${cmd__task}" = - ]; then
 			cmd__task="${STDIN_PATH}"
 		fi
 
+		cmd__prev_task_runner="${TASK_RUNNER}"
 		set_task_runner "${cmd__task}"
-		cmd__tasks_bunch="${cmd__task}"
 
-		while IFS= read -r cmd__task; do
-			cmd__prev_task_runner="${TASK_RUNNER}"
-			set_task_runner "${cmd__task}"
+		if [ "${cmd__prev_task_runner}" = "${TASK_RUNNER}" ]; then
+			cmd__tasks_bunch="${cmd__tasks_bunch}${NL}${cmd__task}"
+		else
+			run "${cmd__prev_task_runner}" "${cmd__tasks_bunch}"
+			cmd__tasks_bunch="${cmd__task}"
+		fi
+	done
+	run "${TASK_RUNNER}" "${cmd__tasks_bunch}"
 
-			if [ "${cmd__prev_task_runner}" = "${TASK_RUNNER}" ]; then
-				cmd__tasks_bunch="${cmd__tasks_bunch}${NL}${cmd__task}"
-			else
-				run "${cmd__prev_task_runner}" "${cmd__tasks_bunch}"
-				cmd__tasks_bunch="${cmd__task}"
-			fi
-		done
-
-		run "${TASK_RUNNER}" "${cmd__tasks_bunch}"
-	fi <<- EOF || die "can't process tasks"
-		${@:--}
-	EOF
 	exec 3<&- || die "${ERROR_CLOSE_FD}" 3
 }
 

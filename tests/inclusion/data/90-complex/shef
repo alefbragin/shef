@@ -2,7 +2,6 @@
 
 SHEF_TXT_RUNNER=cat \
 	SHEF_STDIN_RUNNER=cat \
-	SHEF_STDIN_EXTENSION=txt \
 	SHEF_INCLUDE_PATH="${INPUT_DIR}/include-env" \
 	"${BINARY}" \
 		-I "${INPUT_DIR}/include-opt-1" \

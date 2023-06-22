@@ -1,1 +1,1 @@
-#. aaa/1.txt
+#. ./aaa/1.txt
