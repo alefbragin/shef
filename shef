@@ -17,7 +17,6 @@ INCLUDE_PATH="${SHEF_INCLUDE_PATH:-/usr/local/lib/shef}"
 
 SH_RUNNER="${SHEF_SH_RUNNER:-sh}"
 STDIN_RUNNER="${SHEF_STDIN_RUNNER:-${SH_RUNNER}}"
-STDIN_EXTENSION="${SHEF_STDIN_EXTENSION:-sh}"
 
 init_runtime_path() {
 	RUNTIME_PATH="${SHEF_RUNTIME_PATH:-/run/user/$(id -u)/shef}" || die "can't gets a user ID"
@@ -123,16 +122,16 @@ find_tasks() {
 	done
 }
 
-# Preprocess STDIN, make inclusions and remove comments.
+# Preprocess STDIN, make file inclusions and remove comments.
 #
-# If the inclusion had already been included in this or a previous function call,
+# If the file has iclude guard and had already been included in this or a previous function call,
 # it don't be included, and the inclusion directive will be removed.
 # Note that information about inclusion that had already been included are stored in the variables
 # local to (sub)shell; and the mechanism works as appropriate when this function is called
 # in (sub)shell associated with a current run.
 #
 # Arguments:
-#   $1 Inclusions files extension.
+#   $1 Directory of preprocessed file.
 #
 # Globals:
 #   $INCLUDE_PATH Inclusion searching path in $PATH format.
@@ -141,102 +140,97 @@ find_tasks() {
 #   STDOUT Preprocessed text.
 #
 # Dies if:
-#   - bad inclusion name;
 #   - can't find inclusion;
-#   - no files found in inclusion (when inclusion is a path);
 #   - utilities errors occured.
 preprocess() {
+	preprocess__first_line=1
 	while IFS= read -r preprocess__line; do case "${preprocess__line}" in
-		\#.*)
-			# Preprocess inclusion directive
-
-			# Get inclusion name
-			preprocess__inc_name="${preprocess__line#\#.}"
-			# Left trim
-			preprocess__inc_name="${preprocess__inc_name#${preprocess__inc_name%%[![:blank:]]*}}"
-			# Right trim
-			preprocess__inc_name="${preprocess__inc_name%${preprocess__inc_name##*[![:blank:]]}}"
-
-			check_sanity '^[0-9a-z/-]+$' 'bad inclusion name' "${preprocess__inc_name}"
-
-			preprocess__included_var_name="preprocess__$(
-				rarg "${preprocess__inc_name}" tr '/-' 'S_'
-			)_included" \
-				|| die "can't make variable name for inclusion indicator"
-
-			eval "preprocess__included=\${${preprocess__included_var_name}}"
-			# Skip if already had been included
-			if (( preprocess__included )); then
-				continue
-			fi
-
-			# Search real path for the inclusion
-			# TODO search dir by dir
-			preprocess__inc_path=
-			preprocess__paths="${INCLUDE_PATH}"
-			while [ -n "${preprocess__paths}" ]; do
-				preprocess__path="${preprocess__paths%%:*}"
-				preprocess__inc_prefix="${preprocess__inc_name%%/*}"
-
-				if [ -d "${preprocess__path}/${preprocess__inc_prefix}" ]; then
-					break
-				fi
-
-				if [ -f "${preprocess__path}/${preprocess__inc_name}.$1" ]; then
-					preprocess__inc_is_file=1
-					preprocess__inc_path="${preprocess__path}/${preprocess__inc_name}.$1"
-					break
-				elif [ -d "${preprocess__path}/${preprocess__inc_name}" ]; then
-					preprocess__inc_is_file=0
-					preprocess__inc_path="${preprocess__path}/${preprocess__inc_name}"
-					break
-				fi
-				preprocess__paths="${preprocess__paths#${preprocess__path}}"
-				preprocess__paths="${preprocess__paths#:}"
-			done
-
-			[ -n "${preprocess__inc_path}" ] \
-				|| die "can't find inclusion: %s" "${preprocess__inc_name}"
-
-			# Set an inclusion indicator for the inclusion
-			eval "${preprocess__included_var_name}=1"
-
-			if (( preprocess__inc_is_file )); then
-				# Include the file and all it's inclusions
-				preprocess "$1" < "${preprocess__inc_path}"
-			else
-				# Recursively include all file (and it's inclusions)
-				# with appropriate extension from directory
-
-				preprocess__inc_children="$(
-					find_sort "${preprocess__inc_path}" \
-						-mindepth 1 -maxdepth 1 \
-						-type f -a -name "*.$1" -o -type d -printf '%P%y'
-				)" || die "can't find appropriate items in the path to include: %s" \
-					"${preprocess__inc_path}"
-
-				preprocess__inc_index=
-				while IFS= read -r preprocess__inc_child; do
-					case "${preprocess__inc_child}" in
-						*d) preprocess__inc_directive="#. ${preprocess__inc_name}/${preprocess__inc_child%d}" ;;
-						*f) preprocess__inc_directive="#. ${preprocess__inc_name}/${preprocess__inc_child%.${1}f}" ;;
-					esac
-					preprocess__inc_index="${preprocess__inc_index}${preprocess__inc_directive}${NL}"
-				done <<- EOF
-					${preprocess__inc_children}
-				EOF
-
-				preprocess "$1" <<- EOF
-					${preprocess__inc_index}
-				EOF
-			fi
-		;;
 		\#*)
+			# Check include guard
+			if (( preprocess__first_line )); then
+				preprocess__first_line=0
+
+				# Remove comment symbol
+				preprocess__id="${preprocess__line#\#}"
+
+				# Left trim white spaces
+				preprocess__id="${preprocess__id#${preprocess__id%%[![:blank:]]*}}"
+
+				# Get chars after guard ID
+				preprocess__line_tail="${preprocess__id#${preprocess__id%%[![:word:]]*}}"
+
+				# Remove all chars after guard ID
+				preprocess__id="${preprocess__id%${preprocess__line_tail}}"
+
+				[ -n "${preprocess__id}" ] \
+					|| die 'include guard ID is empty in the line: %s' "${preprocess__line}"
+
+				preprocess__included_var_name="preprocess__${preprocess__id}_included"
+
+				# Skip if file already had been included
+				if (( "${preprocess__included_var_name}" )); then
+					return
+				fi
+
+				# Set include indicator to true for this guard
+				eval "${preprocess__included_var_name}=1"
+			fi
+
 			# Skip comments that starts right from the line begining.
 			# We do not remove comments are padded with spaces to keep it's in heredocs.
 			continue
 		;;
-		*) printf_ '%s\n' "${preprocess__line}" ;;  # Print ordinary line w/o modification
+		\#.*)
+			# Preprocess include directive
+			preprocess__first_line=0
+
+			# Remove include symbol
+			preprocess__path="${preprocess__line#\#.}"
+			# Left trim white spaces
+			preprocess__path="${preprocess__path#${preprocess__path%%[![:blank:]]*}}"
+			# Right trim white spaces
+			preprocess__path="${preprocess__path%${preprocess__path##*[![:blank:]]}}"
+
+			case "${preprocess__path}" in
+				./*|../*)
+					# Include from relative contained directory
+					preprocess__result_path="${1}/${preprocess__path}"
+
+					# TODO Move error string to variable
+					[ -f "${preprocess__result_path}" ] \
+						|| die "include file is not exists: %s" "${preprocess__result_path}"
+				;;
+				*)
+					# Include from $INCLUDE_PATH
+					preprocess__result_path=
+					preprocess__include_paths="${INCLUDE_PATH}"
+					while [ -n "${preprocess__include_paths}" ]; do
+						preprocess__include_path="${preprocess__include_paths%%:*}"
+
+						if [ -f "${preprocess__include_path}/${preprocess__path}" ]; then
+							preprocess__result_path="${preprocess__include_path}/${preprocess__path}"
+							break
+						fi
+
+						preprocess__include_paths="${preprocess__include_paths#${preprocess__include_path}}"
+						preprocess__include_paths="${preprocess__include_paths#:}"
+					done
+
+					# TODO Move error string to variable
+					[ -n "${preprocess__result_path}" ] \
+						|| die 'include file is not found in include paths'
+				;;
+			esac
+
+			preprocess "${preprocess__result_path%/*}" < "${preprocess__result_path}"
+		;;
+		*)
+			# Print ordinary line w/o modification
+			preprocess__first_line=0
+
+			# TODO: Try to use echo in compatibility manner instead of printf.
+			printf_ '%s\n' "${preprocess__line}"
+		;;
 	esac done
 }
 
@@ -279,14 +273,12 @@ run() {
 			# exec 4<&0 0<&3 || die "can't reassign file descriptors: 0, 3"
 
 			if [ "${run__file}" = "${STDIN_PATH}" ]; then
-				run__extension="${STDIN_EXTENSION}"
+				run__dir="$PWD"
 			else
-				# Sanity check of dot presence in file name isn't needed
-				# becouse of '*.*' pattern in the find command in find_tasks function.
-				run__extension="${run__file##*.}"
+				run__dir="${run__file%/*}"
 			fi
 
-			preprocess "${run__extension}" < "${run__file}"
+			preprocess "${run__dir}" < "${run__file}"
 
 			# exec 0<&4 4<&- || die "can't reassign file descriptor and close it: 0, 4"
 		done <<- EOF >&5 || die "can't output tasks content to the pipe"
