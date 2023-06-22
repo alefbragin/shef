@@ -329,7 +329,7 @@ cmd() {
 	set_task_runner "${cmd__task}"
 	cmd__tasks_bunch="${cmd__task}"
 
-	for cmd_task; do
+	for cmd__task in "$@"; do
 		if [ "${cmd__task}" = - ]; then
 			cmd__task="${STDIN_PATH}"
 		fi
@@ -344,6 +344,7 @@ cmd() {
 			cmd__tasks_bunch="${cmd__task}"
 		fi
 	done
+
 	run "${TASK_RUNNER}" "${cmd__tasks_bunch}"
 
 	exec 3<&- || die "${ERROR_CLOSE_FD}" 3
