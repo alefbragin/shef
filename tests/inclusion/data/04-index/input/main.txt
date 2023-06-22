@@ -1,2 +1,2 @@
-#. cat/cat.txt
+#. cat.txt
 main

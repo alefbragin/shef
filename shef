@@ -115,6 +115,48 @@ check_sanity() {
 preprocess() {
 	preprocess__first_line=1
 	while IFS= read -r preprocess__line; do case "${preprocess__line}" in
+		\#.*)
+			# Preprocess include directive
+			preprocess__first_line=0
+
+			# Remove include symbol
+			preprocess__path="${preprocess__line#\#.}"
+			# Left trim white spaces
+			preprocess__path="${preprocess__path#${preprocess__path%%[![:blank:]]*}}"
+			# Right trim white spaces
+			preprocess__path="${preprocess__path%${preprocess__path##*[![:blank:]]}}"
+
+			case "${preprocess__path}" in
+				./*|../*)
+					# Include from relative contained directory
+					preprocess__result_path="${1}/${preprocess__path}"
+
+					[ -f "${preprocess__result_path}" ] \
+						|| die "include file is not exists: %s" "${preprocess__result_path}"
+				;;
+				*)
+					# Include from $INCLUDE_PATH
+					preprocess__result_path=
+					preprocess__include_paths="${INCLUDE_PATH}"
+					while [ -n "${preprocess__include_paths}" ]; do
+						preprocess__include_path="${preprocess__include_paths%%:*}"
+
+						if [ -f "${preprocess__include_path}/${preprocess__path}" ]; then
+							preprocess__result_path="${preprocess__include_path}/${preprocess__path}"
+							break
+						fi
+
+						preprocess__include_paths="${preprocess__include_paths#${preprocess__include_path}}"
+						preprocess__include_paths="${preprocess__include_paths#:}"
+					done
+
+					[ -n "${preprocess__result_path}" ] \
+						|| die 'include file is not found in include paths: %s' "${preprocess__path}"
+				;;
+			esac
+
+			preprocess "${preprocess__result_path%/*}" < "${preprocess__result_path}"
+		;;
 		\#*)
 			# Check include guard
 			if (( preprocess__first_line )); then
@@ -149,50 +191,6 @@ preprocess() {
 			# Skip comments that starts right from the line begining.
 			# We do not remove comments are padded with spaces to keep it's in heredocs.
 			continue
-		;;
-		\#.*)
-			# Preprocess include directive
-			preprocess__first_line=0
-
-			# Remove include symbol
-			preprocess__path="${preprocess__line#\#.}"
-			# Left trim white spaces
-			preprocess__path="${preprocess__path#${preprocess__path%%[![:blank:]]*}}"
-			# Right trim white spaces
-			preprocess__path="${preprocess__path%${preprocess__path##*[![:blank:]]}}"
-
-			case "${preprocess__path}" in
-				./*|../*)
-					# Include from relative contained directory
-					preprocess__result_path="${1}/${preprocess__path}"
-
-					# TODO Move error string to variable
-					[ -f "${preprocess__result_path}" ] \
-						|| die "include file is not exists: %s" "${preprocess__result_path}"
-				;;
-				*)
-					# Include from $INCLUDE_PATH
-					preprocess__result_path=
-					preprocess__include_paths="${INCLUDE_PATH}"
-					while [ -n "${preprocess__include_paths}" ]; do
-						preprocess__include_path="${preprocess__include_paths%%:*}"
-
-						if [ -f "${preprocess__include_path}/${preprocess__path}" ]; then
-							preprocess__result_path="${preprocess__include_path}/${preprocess__path}"
-							break
-						fi
-
-						preprocess__include_paths="${preprocess__include_paths#${preprocess__include_path}}"
-						preprocess__include_paths="${preprocess__include_paths#:}"
-					done
-
-					# TODO Move error string to variable
-					[ -n "${preprocess__result_path}" ] \
-						|| die 'include file is not found in include paths'
-				;;
-			esac
-
-			preprocess "${preprocess__result_path%/*}" < "${preprocess__result_path}"
 		;;
 		*)
 			# Print ordinary line w/o modification
