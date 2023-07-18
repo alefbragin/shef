@@ -15,8 +15,8 @@ VERSION=0.0.0
 STDIN_PATH="${SHEF_STDIN_PATH:-/dev/stdin}"
 INCLUDE_PATH="${SHEF_INCLUDE_PATH:-/usr/local/lib/shef}"
 
-SH_RUNNER="${SHEF_SH_RUNNER:-sh}"
-STDIN_RUNNER="${SHEF_STDIN_RUNNER:-${SH_RUNNER}}"
+SHEF_SH_RUNNER="${SHEF_SH_RUNNER:-sh}"
+SHEF_STDIN_RUNNER="${SHEF_STDIN_RUNNER:-${SHEF_SH_RUNNER}}"
 
 init_runtime_path() {
 	RUNTIME_PATH="${SHEF_RUNTIME_PATH:-/run/user/$(id -u)/shef}" || die "can't gets a user ID"
@@ -264,9 +264,9 @@ run() {
 
 set_task_runner() {
 	if [ "$1" = "${STDIN_PATH}" ]; then
-		[ -n "${STDIN_RUNNER}" ] \
+		[ -n "${SHEF_STDIN_RUNNER}" ] \
 			|| die 'no runner specified for the task from STDIN'
-		TASK_RUNNER="${STDIN_RUNNER}"
+		TASK_RUNNER="${SHEF_STDIN_RUNNER}"
 	else
 		set_task_runner__suffix="${1##*/}"
 		set_task_runner__suffix="${set_task_runner__suffix#*.}"

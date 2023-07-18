@@ -10,7 +10,7 @@ install:
 	chmod 755 ${DESTDIR}${PREFIX}/bin/shef
 	mkdir -p ${DESTDIR}${PREFIX}/lib/shef
 	cp -r -f lib/shef ${DESTDIR}${PREFIX}/lib/shef/
-	chmod -r 644 ${DESTDIR}${PREFIX}/lib/shef
+	chmod -R 644 ${DESTDIR}${PREFIX}/lib/shef
 
 uninstall:
 	rm -f ${DESTDIR}${PREFIX}/bin/shef

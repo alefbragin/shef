@@ -1,3 +1,3 @@
-#. uname
+#. uname.sh
 
 uname

@@ -3,6 +3,6 @@
 HOST="${1:-example.com}"
 USER="${2:-root}"
 
-export SHEF_REMOTE_SH_RUNNER="ssh -T "${USER}@${HOST} -- sh"
+export SHEF_REMOTE_SH_RUNNER="ssh -T ${USER}@${HOST} -- sh"
 
 shef -I lib uname.sh uname.remote.sh
