@@ -2,6 +2,9 @@
 
 Shef a simple automation tool for provisioning and deployment written in POSIX Shell.
 
+Also Shef can be used to make scripts with conditional inclusion.
+It is helpful for make packages for variuos platforms.
+
 **WARNING**: This software is in an early experimental stage, use it with caution.
 
 ## Installation
@@ -13,36 +16,23 @@ sudo make install
 ## Usage
 
 ```sh
-# All files in path/to/tasks directory with .remote.sh suffix will be run with specified command
-SHEF_REMOTE_SH_RUNNER='ssh -T root@$example.com -- sh' shef path/to/tasks
-shef -I path/to/custom/lib path/to/tasks...
+SHEF_REMOTE_SH_RUNNER='ssh -T root@example.com -- sh' \
+    shef \
+        -I lib -I prod-config \
+        prepare.sh provision.remote.sh
 ```
 
-## Environment variables
+## Configure runners
 
-```sh
-SHEF_INCLUDE_PATH=/home/user/.local/lib/shef:/usr/local/lib/shef
-```
+TODO
 
-## Tasks configuration
+## Inclusion
 
-You can use first task argument as config.
+TODO
 
-## Libraries names guarantees
+## Base environment variables
 
-`custom/`, `user/` and `project/` prefixes never be used by Shef libraries.
-
-## TODO
-
-### First priority:
-
-- PIPEs for task running instead of temporary regular file
-
-### Under consideration:
-
-- Custom environments, e.g. `stage`, `prod`, `docker` etc (not only local/target)
-- Ability to run tasks in other languages: `*.bash`, `*.py` etc
-- Parallel execution for tasks in different environments (local/target)
+TODO
 
 ## License
 
