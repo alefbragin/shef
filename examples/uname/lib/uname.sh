@@ -1,5 +1,5 @@
 # uname
 
 uname() {
-	uname -all
+	command uname --all
 }
