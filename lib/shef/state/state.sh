@@ -36,8 +36,10 @@ shef__state() {
 	if [ -z "${shef__state__value}" ]; then
 		shef__state__file="$(shef__state_file "$1")" || shef__die
 		if [ -f "${shef__state__file}" ]; then
-			shef__read_into "shef__states__${1}" < "${shef__state__file}" \
+			shef__read_into shef__state__value < "${shef__state__file}" \
 				|| shef__die "read state value from file: '${shef__state__file}'"
+
+			shef__assign "shef__states__${1}" "${shef__state__value}"
 		fi
 	fi
 
