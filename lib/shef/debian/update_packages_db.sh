@@ -6,11 +6,12 @@
 #.  shef/log/log_changed.sh
 #.  shef/log/log_already.sh
 #.  shef/state/state_set.sh
+#.  shef/state/state_check.sh
 
 shef__fn_alias update_packages_db
 
 shef__update_packages_db() {
-  if [ "$1" = --force ] || shef__check_state packages_db_needs_update; then
+  if [ "$1" = --force ] || shef__state_check packages_db_needs_update; then
     DEBIAN_FRONTEND=noninteractive apt-get update \
       || shef__die 'update packages database'
 
