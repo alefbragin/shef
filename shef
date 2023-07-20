@@ -113,6 +113,7 @@ check_sanity() {
 #   - can't find inclusion;
 #   - utilities errors occured.
 preprocess() {
+	SHEF_SCRIPT_DIR="$1"
 	preprocess__first_line=1
 	while IFS= read -r preprocess__line; do case "${preprocess__line}" in
 		\#.*)
@@ -156,6 +157,19 @@ preprocess() {
 			esac
 
 			preprocess "${preprocess__result_path%/*}" < "${preprocess__result_path}"
+			SHEF_SCRIPT_DIR="$1"
+		;;
+		\#\$*)
+			# Remove include symbol
+			preprocess__var="${preprocess__line#\#\$}"
+			# Left trim white spaces
+			preprocess__var="${preprocess__var#${preprocess__var%%[![:blank:]]*}}"
+			# Right trim white spaces
+			preprocess__var="${preprocess__var%${preprocess__var##*[![:blank:]]}}"
+
+			eval "preprocess__var_value=\"\${${preprocess__var}}\""
+
+			printf_ '%s\n' "${preprocess__var}=\"${preprocess__var_value}\""
 		;;
 		\#*)
 			# Check include guard
