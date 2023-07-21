@@ -160,6 +160,8 @@ preprocess() {
 			SHEF_SCRIPT_DIR="$1"
 		;;
 		\#\$*)
+			# TODO: do not include twice
+
 			# Remove include symbol
 			preprocess__var="${preprocess__line#\#\$}"
 			# Left trim white spaces
