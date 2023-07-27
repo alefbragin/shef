@@ -127,6 +127,10 @@ preprocess() {
 			# Right trim white spaces
 			preprocess__path="${preprocess__path%${preprocess__path##*[![:blank:]]}}"
 
+			# Substitute variables
+			# TODO: Sanitize or use GNU envsubst
+			eval "preprocess__path=\"$preprocess__path\""
+
 			case "${preprocess__path}" in
 				./*|../*)
 					# Include from relative contained directory
