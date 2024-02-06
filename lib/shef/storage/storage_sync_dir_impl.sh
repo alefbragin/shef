@@ -14,5 +14,5 @@ shef__storage_sync_dir() {
 		--mkpath \
 		"${shef__storage_sync_dir__src}" \
 		"$2" \
-			|| shef__die "sync dir ${shef__storage_sync_dir__src} to $1"
+			|| shef__die "sync dir ${shef__storage_sync_dir__src} to $2"
 }
