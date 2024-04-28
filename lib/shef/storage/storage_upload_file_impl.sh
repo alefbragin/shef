@@ -7,6 +7,7 @@
 shef__storage_upload_file() {
 	shef__storage_upload_file__dest="$2:${SHEF_STORAGE_PATH}/uploads/$3"
 	rsync \
+		--progress \
 		--perms \
 		--compress \
 		--mkpath \

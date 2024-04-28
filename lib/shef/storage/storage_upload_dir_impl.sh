@@ -7,6 +7,7 @@
 shef__storage_upload_dir() {
 	shef__storage_upload_dir__dest="$2:${SHEF_STORAGE_PATH}/uploads/$3"
 	rsync \
+		--progress \
 		--recursive \
 		--delete \
 		--links \
