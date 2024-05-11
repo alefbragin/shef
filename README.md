@@ -39,3 +39,15 @@ TODO
 MIT License
 
 See [LICENSE](LICENSE) to see the full text.
+
+## TODO
+
+```sh
+# TODO allow preprocess script like for Shef
+read_into --preprocess ma_pers_bk_script << 'EOF'
+#!/bin/sh
+#. shef/utils.sh
+dump_name="$(date +%s)" || die
+mkdir -p /root/ma-pers-dumps && gzip -c /var/lib/redis/dump.rdb > "/root/ma-pers-dumps/$(date +%s).rdb.gz"
+EOF
+```
