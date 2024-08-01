@@ -40,6 +40,11 @@ MIT License
 
 See [LICENSE](LICENSE) to see the full text.
 
+## BUGS
+
+- If there is no a newline (the `\n` character) at end of file file,
+  last line will not be preprocessed
+
 ## TODO
 
 ```sh
