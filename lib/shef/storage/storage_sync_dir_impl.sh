@@ -5,6 +5,7 @@
 #.   shef/utils/die.sh
 
 shef__storage_sync_dir() {
+	shef__storage_sync_dir__extra_opt="$3"
 	shef__storage_sync_dir__src="${SHEF_STORAGE_PATH}/uploads/$1/"
 	rsync \
 		--recursive \
@@ -12,6 +13,7 @@ shef__storage_sync_dir() {
 		--links \
 		--perms \
 		--mkpath \
+		$shef__storage_sync_dir__extra_opt \
 		"${shef__storage_sync_dir__src}" \
 		"$2" \
 			|| shef__die "sync dir ${shef__storage_sync_dir__src} to $2"
